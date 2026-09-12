@@ -1,0 +1,43 @@
+:root {
+  --bg: #11130f;
+  --panel: #1b1e18;
+  --text: #f5f2e8;
+  --muted: #b8b6aa;
+  --gold: #cda639;
+  --green: #546b15;
+  --border: #2b2e26;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); }
+body { font-family: Arial, Helvetica, sans-serif; }
+a { color: inherit; text-decoration: none; }
+
+.shell { min-height: 100vh; display: grid; grid-template-columns: 240px 1fr; }
+.sidebar { background: #0d0f0b; border-right: 1px solid var(--border); padding: 24px 18px; }
+.brand { color: var(--gold); font-weight: 800; font-size: 24px; letter-spacing: -0.5px; }
+.brand small { display:block; color: var(--muted); font-size: 11px; margin-top: 4px; letter-spacing: 1.5px; }
+.nav { margin-top: 34px; display: grid; gap: 8px; }
+.nav a { padding: 11px 12px; border-radius: 9px; color: var(--muted); }
+.nav a.active { background: #22271a; color: #fff; border: 1px solid #32401a; }
+.content { padding: 32px; }
+.header { display:flex; justify-content:space-between; gap:16px; align-items:center; margin-bottom:28px; }
+.pill { border:1px solid var(--border); border-radius:999px; padding:8px 12px; color:var(--muted); font-size:13px; }
+.grid { display:grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap:16px; }
+.card { background:var(--panel); border:1px solid var(--border); border-radius:16px; padding:20px; }
+.card .label { color:var(--muted); font-size:13px; }
+.card .value { font-size:30px; font-weight:800; margin-top:8px; }
+.hero { margin-top:18px; display:grid; grid-template-columns: 1.5fr 1fr; gap:16px; }
+.hero h2 { margin-top:0; }
+.hero p { color:var(--muted); line-height:1.6; }
+.badge { display:inline-block; background:rgba(205,166,57,.12); border:1px solid rgba(205,166,57,.35); color:#ecd77c; padding:6px 9px; border-radius:999px; font-size:12px; }
+.logoWrap { min-height:240px; display:flex; align-items:center; justify-content:center; background:linear-gradient(145deg,#d4ad39,#b88f1f); border-radius:16px; }
+.logoWrap img { width:min(260px,80%); height:auto; }
+
+@media (max-width: 900px) {
+  .shell { grid-template-columns: 1fr; }
+  .sidebar { display:none; }
+  .content { padding:20px; }
+  .grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .hero { grid-template-columns: 1fr; }
+}

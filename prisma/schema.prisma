@@ -1,0 +1,234 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  INACTIVE
+}
+
+enum UnitStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum UserStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+  INACTIVE
+}
+
+enum RoleCode {
+  SUPER_ADMIN
+  OWNER
+  MANAGER
+  ATTENDANT
+}
+
+enum ProductStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum SelectionType {
+  SINGLE
+  MULTIPLE
+}
+
+model Tenant {
+  id        String       @id @default(cuid())
+  name      String
+  slug      String       @unique
+  status    TenantStatus @default(ACTIVE)
+  legalName String?
+  document  String?
+  phone     String?
+  timezone  String       @default("America/Sao_Paulo")
+  currency  String       @default("BRL")
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  units        Unit[]
+  users        User[]
+  categories   Category[]
+  products     Product[]
+  optionGroups OptionGroup[]
+  options      Option[]
+  auditLogs    AuditLog[]
+
+  @@index([status])
+}
+
+model Unit {
+  id          String     @id @default(cuid())
+  tenantId    String
+  name        String
+  slug        String
+  status      UnitStatus @default(ACTIVE)
+  phone       String?
+  addressLine String?
+  city        String?
+  state       String?
+  postalCode  String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, slug])
+  @@index([tenantId, status])
+}
+
+model User {
+  id           String     @id @default(cuid())
+  tenantId     String?
+  name         String
+  email        String     @unique
+  passwordHash String?
+  status       UserStatus @default(INVITED)
+  role         RoleCode
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  tenant    Tenant?    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  auditLogs AuditLog[] @relation("AuditActor")
+  sessions  Session[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, role])
+}
+
+model Category {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  slug      String
+  position  Int      @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  products Product[]
+
+  @@unique([tenantId, slug])
+  @@unique([id, tenantId])
+  @@index([tenantId, active, position])
+}
+
+model Product {
+  id          String        @id @default(cuid())
+  tenantId    String
+  categoryId  String?
+  name        String
+  slug        String
+  description String?
+  basePrice   Decimal?      @db.Decimal(10, 2)
+  status      ProductStatus @default(ACTIVE)
+  imageUrl    String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  tenant       Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  category     Category?            @relation(fields: [categoryId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  optionGroups ProductOptionGroup[]
+
+  @@unique([tenantId, slug])
+  @@unique([id, tenantId])
+  @@index([tenantId, status])
+  @@index([categoryId])
+}
+
+model OptionGroup {
+  id            String        @id @default(cuid())
+  tenantId      String
+  name          String
+  slug          String
+  selectionType SelectionType @default(SINGLE)
+  minSelections Int           @default(0)
+  maxSelections Int           @default(1)
+  required      Boolean       @default(false)
+  position      Int           @default(0)
+  active        Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  tenant   Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  options  Option[]
+  products ProductOptionGroup[]
+
+  @@unique([tenantId, slug])
+  @@unique([id, tenantId])
+  @@index([tenantId, active, position])
+}
+
+model Option {
+  id            String   @id @default(cuid())
+  tenantId      String
+  optionGroupId String
+  name          String
+  priceDelta    Decimal  @default(0) @db.Decimal(10, 2)
+  position      Int      @default(0)
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  optionGroup OptionGroup @relation(fields: [optionGroupId], references: [id], onDelete: Cascade)
+
+  @@unique([optionGroupId, name])
+  @@index([tenantId, active])
+}
+
+model ProductOptionGroup {
+  tenantId      String
+  productId     String
+  optionGroupId String
+  position      Int    @default(0)
+
+  product     Product     @relation(fields: [productId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  optionGroup OptionGroup @relation(fields: [optionGroupId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@id([productId, optionGroupId])
+  @@index([tenantId])
+  @@index([optionGroupId])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  tenantId    String
+  actorUserId String?
+  action      String
+  entityType  String
+  entityId    String?
+  metadata    Json?
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  actor  User?  @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, entityType, entityId])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}

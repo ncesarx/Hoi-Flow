@@ -1,0 +1,44 @@
+{
+  "name": "xeroflow",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=20.12.0"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start --hostname 127.0.0.1 --port 3002",
+    "test": "tsx --test tests/**/*.test.ts",
+    "test:s1.6": "tsx --test tests/s1.6-tenant-isolation.test.ts",
+    "test:s1.7": "tsx --test tests/s1.7-rbac.test.ts",
+    "lint": "next lint",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:seed": "prisma db seed",
+    "db:studio": "prisma studio"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.10.0",
+    "@prisma/client": "7.10.0",
+    "argon2": "^0.45.1",
+    "dotenv": "^17.4.2",
+    "next": "16.3.3",
+    "pg": "^8.23.0",
+    "react": "latest",
+    "react-dom": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "@types/pg": "^8.23.1",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "prisma": "7.10.0",
+    "tsx": "latest",
+    "typescript": "latest"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  }
+}
