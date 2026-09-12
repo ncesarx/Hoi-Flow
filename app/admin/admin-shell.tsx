@@ -81,6 +81,14 @@ const navigation: NavigationItem[] = [
 
 const secondaryNavigation: NavigationItem[] = [
   {
+    label: "Auditoria",
+    href: "/admin/auditoria",
+    icon: "◎",
+    permission: "tenant.manage",
+    tenantOnly: true,
+  },
+
+  {
     label: "Configurações",
     href: "/admin/configuracoes",
     icon: "⚙",
