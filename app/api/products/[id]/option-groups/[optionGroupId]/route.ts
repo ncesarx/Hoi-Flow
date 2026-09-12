@@ -8,6 +8,7 @@ import { authErrorResponse } from "@/lib/auth/api-error";
 import { Permissions } from "@/lib/auth/rbac";
 import { requireTenantPermission } from "@/lib/tenant/authorized-context";
 import { assertSameOrigin } from "@/lib/security/same-origin";
+import { getRequestIp } from "@/lib/audit/audit";
 
 type RouteContext = {
   params: Promise<{
@@ -23,7 +24,7 @@ export async function DELETE(
   try {
     assertSameOrigin(request);
 
-    const { tenantId } =
+    const { tenantId, userId } =
       await requireTenantPermission(
         Permissions.CATALOG_WRITE,
       );
@@ -38,6 +39,10 @@ export async function DELETE(
         tenantId,
         id,
         optionGroupId,
+        {
+          actorUserId: userId,
+          ipAddress: getRequestIp(request),
+        },
       );
 
     if (!relation) {

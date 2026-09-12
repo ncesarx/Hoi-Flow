@@ -27,6 +27,7 @@ import {
 import {
   assertSameOrigin,
 } from "@/lib/security/same-origin";
+import { getRequestIp } from "@/lib/audit/audit";
 
 function validateRules(
   selectionType: SelectionType,
@@ -116,6 +117,7 @@ export async function POST(
 
     const {
       tenantId,
+      userId,
     } =
       await requireTenantPermission(
         Permissions.CATALOG_WRITE,
@@ -242,6 +244,10 @@ export async function POST(
             "boolean"
               ? body.active
               : true,
+        },
+        {
+          actorUserId: userId,
+          ipAddress: getRequestIp(request),
         },
       );
 

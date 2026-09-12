@@ -5,6 +5,17 @@ import {
 import {
   prisma,
 } from "@/lib/db/prisma";
+import {
+  AuditActions,
+  AuditEntityTypes,
+} from "@/lib/audit/actions";
+import { createAuditLog } from "@/lib/audit/audit";
+import { buildOptionGroupAuditSnapshot } from "@/lib/audit/option-group-snapshot";
+
+type OptionGroupAuditContext = {
+  actorUserId?: string | null;
+  ipAddress?: string | null;
+};
 
 type OptionGroupWriteData = {
   name?: string;
@@ -98,49 +109,68 @@ export async function createOptionGroupForTenant(
     position?: number;
     active?: boolean;
   },
+  auditContext: OptionGroupAuditContext = {},
 ) {
-  return prisma.optionGroup.create({
-    data: {
-      tenantId,
+  return prisma.$transaction(async (tx) => {
+    const group = await tx.optionGroup.create({
+      data: {
+        tenantId,
 
-      name:
-        data.name,
+        name:
+          data.name,
 
-      slug:
-        data.slug,
+        slug:
+          data.slug,
 
-      selectionType:
-        data.selectionType,
+        selectionType:
+          data.selectionType,
 
-      minSelections:
-        data.minSelections,
+        minSelections:
+          data.minSelections,
 
-      maxSelections:
-        data.maxSelections,
+        maxSelections:
+          data.maxSelections,
 
-      required:
-        data.required,
+        required:
+          data.required,
 
-      position:
-        data.position ?? 0,
+        position:
+          data.position ?? 0,
 
-      active:
-        data.active ?? true,
-    },
-
-    include: {
-      options: {
-        orderBy: {
-          position: "asc",
-        },
+        active:
+          data.active ?? true,
       },
 
-      _count: {
-        select: {
-          products: true,
+      include: {
+        options: {
+          orderBy: {
+            position: "asc",
+          },
+        },
+        _count: {
+          select: {
+            products: true,
+          },
         },
       },
-    },
+    });
+
+    await createAuditLog(
+      {
+        tenantId,
+        actorUserId: auditContext.actorUserId,
+        action: AuditActions.OPTION_GROUP_CREATED,
+        entityType: AuditEntityTypes.OPTION_GROUP,
+        entityId: group.id,
+        metadata: {
+          after: buildOptionGroupAuditSnapshot(group),
+        },
+        ipAddress: auditContext.ipAddress,
+      },
+      tx,
+    );
+
+    return group;
   });
 }
 
@@ -148,38 +178,59 @@ export async function updateOptionGroupForTenant(
   tenantId: string,
   optionGroupId: string,
   data: OptionGroupWriteData,
+  auditContext: OptionGroupAuditContext = {},
 ) {
-  const group =
-    await prisma.optionGroup.findFirst({
+  return prisma.$transaction(async (tx) => {
+    const group =
+      await tx.optionGroup.findFirst({
+        where: {
+          id: optionGroupId,
+          tenantId,
+        },
+      });
+
+    if (!group) {
+      return null;
+    }
+
+    const updatedGroup = await tx.optionGroup.update({
       where: {
-        id: optionGroupId,
-        tenantId,
+        id: group.id,
+      },
+
+      data,
+
+      include: {
+        options: {
+          orderBy: {
+            position: "asc",
+          },
+        },
+
+        _count: {
+          select: {
+            products: true,
+          },
+        },
       },
     });
 
-  if (!group) {
-    return null;
-  }
-
-  return prisma.optionGroup.update({
-    where: {
-      id: group.id,
-    },
-
-    data,
-
-    include: {
-      options: {
-        orderBy: {
-          position: "asc",
+    await createAuditLog(
+      {
+        tenantId,
+        actorUserId: auditContext.actorUserId,
+        action: AuditActions.OPTION_GROUP_UPDATED,
+        entityType: AuditEntityTypes.OPTION_GROUP,
+        entityId: updatedGroup.id,
+        metadata: {
+          before: buildOptionGroupAuditSnapshot(group),
+          after: buildOptionGroupAuditSnapshot(updatedGroup),
         },
+        ipAddress: auditContext.ipAddress,
       },
+      tx,
+    );
 
-      _count: {
-        select: {
-          products: true,
-        },
-      },
-    },
+    return updatedGroup;
   });
 }

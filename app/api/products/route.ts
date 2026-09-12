@@ -25,6 +25,7 @@ import {
 import {
   assertSameOrigin,
 } from "@/lib/security/same-origin";
+import { getRequestIp } from "@/lib/audit/audit";
 
 function isValidStatus(
   value: unknown,
@@ -141,7 +142,7 @@ export async function POST(
   try {
     assertSameOrigin(request);
 
-    const { tenantId } =
+    const { tenantId, userId } =
       await requireTenantPermission(
         Permissions.CATALOG_WRITE,
       );
@@ -269,6 +270,10 @@ export async function POST(
             price.value,
           status,
           imageUrl,
+        },
+        {
+          actorUserId: userId,
+          ipAddress: getRequestIp(request),
         },
       );
 

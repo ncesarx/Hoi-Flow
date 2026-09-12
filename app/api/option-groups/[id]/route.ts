@@ -27,6 +27,7 @@ import {
 import {
   assertSameOrigin,
 } from "@/lib/security/same-origin";
+import { getRequestIp } from "@/lib/audit/audit";
 
 type RouteContext = {
   params: Promise<{
@@ -72,7 +73,7 @@ function validateRules(
 }
 
 export async function GET(
-  request: Request,
+  _request: Request,
   context: RouteContext,
 ) {
   try {
@@ -143,6 +144,7 @@ export async function PATCH(
 
     const {
       tenantId,
+      userId,
     } =
       await requireTenantPermission(
         Permissions.CATALOG_WRITE,
@@ -311,6 +313,10 @@ export async function PATCH(
           required,
           position,
           active,
+        },
+        {
+          actorUserId: userId,
+          ipAddress: getRequestIp(request),
         },
       );
 
