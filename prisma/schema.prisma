@@ -42,6 +42,19 @@ enum SelectionType {
   MULTIPLE
 }
 
+enum OrderStatus {
+  NEW
+  PREPARING
+  READY
+  COMPLETED
+  CANCELLED
+}
+
+enum OrderChannel {
+  WHATSAPP
+  MANUAL
+}
+
 model Tenant {
   id        String       @id @default(cuid())
   name      String
@@ -62,6 +75,7 @@ model Tenant {
   optionGroups OptionGroup[]
   options      Option[]
   auditLogs    AuditLog[]
+  orders       Order[]
 
   @@index([status])
 }
@@ -80,9 +94,11 @@ model Unit {
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  orders Order[]
 
   @@unique([tenantId, slug])
+  @@unique([id, tenantId])
   @@index([tenantId, status])
 }
 
@@ -139,6 +155,7 @@ model Product {
   tenant       Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   category     Category?            @relation(fields: [categoryId, tenantId], references: [id, tenantId], onDelete: Restrict)
   optionGroups ProductOptionGroup[]
+  orderItems   OrderItem[]
 
   @@unique([tenantId, slug])
   @@unique([id, tenantId])
@@ -180,10 +197,12 @@ model Option {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  optionGroup OptionGroup @relation(fields: [optionGroupId], references: [id], onDelete: Cascade)
+  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  optionGroup OptionGroup       @relation(fields: [optionGroupId], references: [id], onDelete: Cascade)
+  orderItems  OrderItemOption[]
 
   @@unique([optionGroupId, name])
+  @@unique([id, tenantId])
   @@index([tenantId, active])
 }
 
@@ -217,6 +236,73 @@ model AuditLog {
 
   @@index([tenantId, createdAt])
   @@index([tenantId, entityType, entityId])
+}
+
+model Order {
+  id            String       @id @default(cuid())
+  tenantId      String
+  unitId        String?
+  code          String
+  channel       OrderChannel @default(MANUAL)
+  status        OrderStatus  @default(NEW)
+  customerName  String?
+  customerPhone String?
+  notes         String?
+  total         Decimal      @default(0) @db.Decimal(10, 2)
+  confirmedAt   DateTime?
+  readyAt       DateTime?
+  completedAt   DateTime?
+  cancelledAt   DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  tenant Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unit   Unit?       @relation(fields: [unitId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  items  OrderItem[]
+
+  @@unique([tenantId, code])
+  @@unique([id, tenantId])
+  @@index([tenantId, status, createdAt])
+  @@index([unitId])
+  @@index([customerPhone])
+}
+
+model OrderItem {
+  id          String   @id @default(cuid())
+  tenantId    String
+  orderId     String
+  productId   String?
+  productName String
+  quantity    Int
+  unitPrice   Decimal  @db.Decimal(10, 2)
+  subtotal    Decimal  @db.Decimal(10, 2)
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  order   Order             @relation(fields: [orderId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  product Product?          @relation(fields: [productId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  options OrderItemOption[]
+
+  @@unique([id, tenantId])
+  @@index([tenantId, orderId])
+  @@index([productId])
+}
+
+model OrderItemOption {
+  id          String   @id @default(cuid())
+  tenantId    String
+  orderItemId String
+  optionId    String?
+  optionName  String
+  priceDelta  Decimal  @default(0) @db.Decimal(10, 2)
+  createdAt   DateTime @default(now())
+
+  orderItem OrderItem @relation(fields: [orderItemId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  option    Option?   @relation(fields: [optionId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  @@index([tenantId, orderItemId])
+  @@index([optionId])
 }
 
 model Session {

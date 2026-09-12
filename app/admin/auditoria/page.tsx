@@ -15,6 +15,8 @@ const actionLabels: Record<string, string> = {
   OPTION_DELETED: "Opção excluída",
   PRODUCT_OPTION_GROUP_ATTACHED: "Grupo vinculado ao produto",
   PRODUCT_OPTION_GROUP_DETACHED: "Grupo removido do produto",
+  ORDER_CREATED: "Pedido criado",
+  ORDER_STATUS_CHANGED: "Status do pedido atualizado",
 };
 
 const entityLabels: Record<string, string> = {
@@ -25,6 +27,7 @@ const entityLabels: Record<string, string> = {
   ProductOptionGroup: "Vínculo do catálogo",
   Tenant: "Restaurante",
   User: "Usuário",
+  Order: "Pedido",
 };
 
 export default async function AuditPage() {

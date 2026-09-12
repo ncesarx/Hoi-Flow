@@ -34,6 +34,12 @@ export const AuditActions = {
 
   PRODUCT_OPTION_GROUP_DETACHED:
     "PRODUCT_OPTION_GROUP_DETACHED",
+
+  ORDER_CREATED:
+    "ORDER_CREATED",
+
+  ORDER_STATUS_CHANGED:
+    "ORDER_STATUS_CHANGED",
 } as const;
 
 export const AuditEntityTypes = {
@@ -45,4 +51,5 @@ export const AuditEntityTypes = {
     "ProductOptionGroup",
   TENANT: "Tenant",
   USER: "User",
+  ORDER: "Order",
 } as const;

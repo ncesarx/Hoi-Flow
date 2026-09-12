@@ -1,0 +1,288 @@
+import { randomUUID } from "node:crypto";
+
+import {
+  OrderChannel,
+  OrderStatus,
+  ProductStatus,
+} from "@prisma/client";
+
+import { AuditActions, AuditEntityTypes } from "@/lib/audit/actions";
+import { createAuditLog } from "@/lib/audit/audit";
+import { prisma } from "@/lib/db/prisma";
+import {
+  calculateOrderItemSubtotal,
+  canTransitionOrderStatus,
+  orderStatusTimestamps,
+  sumMoney,
+} from "@/lib/orders/domain";
+
+type OrderAuditContext = {
+  actorUserId?: string | null;
+  ipAddress?: string | null;
+};
+
+export type CreateOrderInput = {
+  unitId?: string | null;
+  channel?: OrderChannel;
+  customerName?: string | null;
+  customerPhone?: string | null;
+  notes?: string | null;
+  items: Array<{
+    productId: string;
+    quantity: number;
+    notes?: string | null;
+    optionIds?: string[];
+  }>;
+};
+
+function createOrderCode() {
+  return `HF-${Date.now().toString(36).toUpperCase()}-${randomUUID()
+    .slice(0, 6)
+    .toUpperCase()}`;
+}
+
+export async function listOrdersForTenant(
+  tenantId: string,
+  status?: OrderStatus,
+) {
+  return prisma.order.findMany({
+    where: {
+      tenantId,
+      status,
+    },
+    include: {
+      unit: true,
+      items: {
+        include: { options: true },
+        orderBy: { createdAt: "asc" },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 200,
+  });
+}
+
+export async function getOrderForTenant(
+  tenantId: string,
+  orderId: string,
+) {
+  return prisma.order.findFirst({
+    where: { id: orderId, tenantId },
+    include: {
+      unit: true,
+      items: {
+        include: { options: true },
+        orderBy: { createdAt: "asc" },
+      },
+    },
+  });
+}
+
+export async function createOrderForTenant(
+  tenantId: string,
+  input: CreateOrderInput,
+  auditContext: OrderAuditContext = {},
+) {
+  if (input.items.length === 0) {
+    return null;
+  }
+
+  return prisma.$transaction(async (tx) => {
+    if (input.unitId) {
+      const unit = await tx.unit.findFirst({
+        where: {
+          id: input.unitId,
+          tenantId,
+          status: "ACTIVE",
+        },
+      });
+      if (!unit) return null;
+    }
+
+    const preparedItems = [];
+
+    for (const requestedItem of input.items) {
+      if (
+        !Number.isInteger(requestedItem.quantity) ||
+        requestedItem.quantity < 1
+      ) {
+        return null;
+      }
+
+      const product = await tx.product.findFirst({
+        where: {
+          id: requestedItem.productId,
+          tenantId,
+          status: ProductStatus.ACTIVE,
+          basePrice: { not: null },
+        },
+        include: {
+          optionGroups: {
+            include: {
+              optionGroup: {
+                include: {
+                  options: {
+                    where: { active: true },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+      if (!product || !product.basePrice) return null;
+
+      const requestedOptionIds = [
+        ...new Set(requestedItem.optionIds ?? []),
+      ];
+      const allowedOptions = product.optionGroups.flatMap(
+        ({ optionGroup }) =>
+          optionGroup.options.map((option) => ({
+            ...option,
+            optionGroupId: optionGroup.id,
+          })),
+      );
+      const selectedOptions = requestedOptionIds.map((optionId) =>
+        allowedOptions.find((option) => option.id === optionId),
+      );
+      if (selectedOptions.some((option) => !option)) return null;
+
+      for (const { optionGroup } of product.optionGroups) {
+        const selectionCount = selectedOptions.filter(
+          (option) => option?.optionGroupId === optionGroup.id,
+        ).length;
+        if (
+          selectionCount < optionGroup.minSelections ||
+          selectionCount > optionGroup.maxSelections ||
+          (optionGroup.required && selectionCount === 0)
+        ) {
+          return null;
+        }
+      }
+
+      const options = selectedOptions.filter(
+        (option): option is NonNullable<typeof option> => Boolean(option),
+      );
+      const pricing = calculateOrderItemSubtotal(
+        product.basePrice.toFixed(2),
+        options.map((option) => option.priceDelta.toFixed(2)),
+        requestedItem.quantity,
+      );
+
+      preparedItems.push({
+        tenantId,
+        productId: product.id,
+        productName: product.name,
+        quantity: requestedItem.quantity,
+        unitPrice: pricing.unitPrice,
+        subtotal: pricing.subtotal,
+        notes: requestedItem.notes ?? null,
+        options: {
+          create: options.map((option) => ({
+            tenantId,
+            optionId: option.id,
+            optionName: option.name,
+            priceDelta: option.priceDelta,
+          })),
+        },
+      });
+    }
+
+    const total = sumMoney(
+      preparedItems.map((item) => item.subtotal),
+    );
+    const order = await tx.order.create({
+      data: {
+        tenantId,
+        unitId: input.unitId ?? null,
+        code: createOrderCode(),
+        channel: input.channel ?? OrderChannel.MANUAL,
+        status: OrderStatus.NEW,
+        customerName: input.customerName ?? null,
+        customerPhone: input.customerPhone ?? null,
+        notes: input.notes ?? null,
+        total,
+        confirmedAt: new Date(),
+        items: { create: preparedItems },
+      },
+      include: {
+        unit: true,
+        items: {
+          include: { options: true },
+          orderBy: { createdAt: "asc" },
+        },
+      },
+    });
+
+    await createAuditLog(
+      {
+        tenantId,
+        actorUserId: auditContext.actorUserId,
+        action: AuditActions.ORDER_CREATED,
+        entityType: AuditEntityTypes.ORDER,
+        entityId: order.id,
+        metadata: {
+          code: order.code,
+          channel: order.channel,
+          status: order.status,
+          total: order.total.toFixed(2),
+          itemCount: order.items.length,
+        },
+        ipAddress: auditContext.ipAddress,
+      },
+      tx,
+    );
+
+    return order;
+  });
+}
+
+export async function updateOrderStatusForTenant(
+  tenantId: string,
+  orderId: string,
+  status: OrderStatus,
+  auditContext: OrderAuditContext = {},
+) {
+  return prisma.$transaction(async (tx) => {
+    const order = await tx.order.findFirst({
+      where: { id: orderId, tenantId },
+    });
+    if (!order || !canTransitionOrderStatus(order.status, status)) {
+      return null;
+    }
+
+    const updatedOrder = await tx.order.update({
+      where: { id: order.id },
+      data: {
+        status,
+        ...orderStatusTimestamps(status, new Date()),
+      },
+      include: {
+        unit: true,
+        items: {
+          include: { options: true },
+          orderBy: { createdAt: "asc" },
+        },
+      },
+    });
+
+    await createAuditLog(
+      {
+        tenantId,
+        actorUserId: auditContext.actorUserId,
+        action: AuditActions.ORDER_STATUS_CHANGED,
+        entityType: AuditEntityTypes.ORDER,
+        entityId: order.id,
+        metadata: {
+          code: order.code,
+          before: order.status,
+          after: updatedOrder.status,
+        },
+        ipAddress: auditContext.ipAddress,
+      },
+      tx,
+    );
+
+    return updatedOrder;
+  });
+}
