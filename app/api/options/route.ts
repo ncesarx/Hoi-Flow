@@ -9,6 +9,7 @@ import { authErrorResponse } from "@/lib/auth/api-error";
 import { Permissions } from "@/lib/auth/rbac";
 import { requireTenantPermission } from "@/lib/tenant/authorized-context";
 import { assertSameOrigin } from "@/lib/security/same-origin";
+import { getRequestIp } from "@/lib/audit/audit";
 
 export async function GET() {
   try {
@@ -54,7 +55,7 @@ export async function POST(
   try {
     assertSameOrigin(request);
 
-    const { tenantId } =
+    const { tenantId, userId } =
       await requireTenantPermission(
         Permissions.CATALOG_WRITE,
       );
@@ -101,6 +102,10 @@ export async function POST(
             typeof body.priceDelta === "number"
               ? body.priceDelta
               : 0,
+        },
+        {
+          actorUserId: userId,
+          ipAddress: getRequestIp(request),
         },
       );
 

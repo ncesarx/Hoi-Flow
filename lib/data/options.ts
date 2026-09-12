@@ -1,4 +1,15 @@
 import { prisma } from "@/lib/db/prisma";
+import {
+  AuditActions,
+  AuditEntityTypes,
+} from "@/lib/audit/actions";
+import { createAuditLog } from "@/lib/audit/audit";
+import { buildOptionAuditSnapshot } from "@/lib/audit/option-snapshot";
+
+type OptionAuditContext = {
+  actorUserId?: string | null;
+  ipAddress?: string | null;
+};
 
 export async function listOptionsForTenant(
   tenantId: string,
@@ -45,31 +56,51 @@ export async function createOptionForTenant(
     active?: boolean;
     priceDelta?: number;
   },
+  auditContext: OptionAuditContext = {},
 ) {
-  const optionGroup =
-    await prisma.optionGroup.findFirst({
-      where: {
-        id: data.optionGroupId,
+  return prisma.$transaction(async (tx) => {
+    const optionGroup =
+      await tx.optionGroup.findFirst({
+        where: {
+          id: data.optionGroupId,
+          tenantId,
+        },
+      });
+
+    if (!optionGroup) {
+      return null;
+    }
+
+    const option = await tx.option.create({
+      data: {
         tenantId,
+        optionGroupId: optionGroup.id,
+        name: data.name,
+        position: data.position ?? 0,
+        active: data.active ?? true,
+        priceDelta: data.priceDelta ?? 0,
+      },
+      include: {
+        optionGroup: true,
       },
     });
 
-  if (!optionGroup) {
-    return null;
-  }
+    await createAuditLog(
+      {
+        tenantId,
+        actorUserId: auditContext.actorUserId,
+        action: AuditActions.OPTION_CREATED,
+        entityType: AuditEntityTypes.OPTION,
+        entityId: option.id,
+        metadata: {
+          after: buildOptionAuditSnapshot(option),
+        },
+        ipAddress: auditContext.ipAddress,
+      },
+      tx,
+    );
 
-  return prisma.option.create({
-    data: {
-      tenantId,
-      optionGroupId: optionGroup.id,
-      name: data.name,
-      position: data.position ?? 0,
-      active: data.active ?? true,
-      priceDelta: data.priceDelta ?? 0,
-    },
-    include: {
-      optionGroup: true,
-    },
+    return option;
   });
 }
 
@@ -83,61 +114,102 @@ export async function updateOptionForTenant(
     active?: boolean;
     priceDelta?: number;
   },
+  auditContext: OptionAuditContext = {},
 ) {
-  const option = await prisma.option.findFirst({
-    where: {
-      id: optionId,
-      tenantId,
-    },
-  });
+  return prisma.$transaction(async (tx) => {
+    const option = await tx.option.findFirst({
+      where: {
+        id: optionId,
+        tenantId,
+      },
+    });
 
-  if (!option) {
-    return null;
-  }
-
-  if (data.optionGroupId) {
-    const optionGroup =
-      await prisma.optionGroup.findFirst({
-        where: {
-          id: data.optionGroupId,
-          tenantId,
-        },
-      });
-
-    if (!optionGroup) {
+    if (!option) {
       return null;
     }
-  }
 
-  return prisma.option.update({
-    where: {
-      id: option.id,
-    },
-    data,
-    include: {
-      optionGroup: true,
-    },
+    if (data.optionGroupId) {
+      const optionGroup =
+        await tx.optionGroup.findFirst({
+          where: {
+            id: data.optionGroupId,
+            tenantId,
+          },
+        });
+
+      if (!optionGroup) {
+        return null;
+      }
+    }
+
+    const updatedOption = await tx.option.update({
+      where: {
+        id: option.id,
+      },
+      data,
+      include: {
+        optionGroup: true,
+      },
+    });
+
+    await createAuditLog(
+      {
+        tenantId,
+        actorUserId: auditContext.actorUserId,
+        action: AuditActions.OPTION_UPDATED,
+        entityType: AuditEntityTypes.OPTION,
+        entityId: updatedOption.id,
+        metadata: {
+          before: buildOptionAuditSnapshot(option),
+          after: buildOptionAuditSnapshot(updatedOption),
+        },
+        ipAddress: auditContext.ipAddress,
+      },
+      tx,
+    );
+
+    return updatedOption;
   });
 }
 
 export async function deleteOptionForTenant(
   tenantId: string,
   optionId: string,
+  auditContext: OptionAuditContext = {},
 ) {
-  const option = await prisma.option.findFirst({
-    where: {
-      id: optionId,
-      tenantId,
-    },
-  });
+  return prisma.$transaction(async (tx) => {
+    const option = await tx.option.findFirst({
+      where: {
+        id: optionId,
+        tenantId,
+      },
+    });
 
-  if (!option) {
-    return null;
-  }
+    if (!option) {
+      return null;
+    }
 
-  return prisma.option.delete({
-    where: {
-      id: option.id,
-    },
+    const deletedOption = await tx.option.delete({
+      where: {
+        id: option.id,
+      },
+    });
+
+    await createAuditLog(
+      {
+        tenantId,
+        actorUserId: auditContext.actorUserId,
+        action: AuditActions.OPTION_DELETED,
+        entityType: AuditEntityTypes.OPTION,
+        entityId: deletedOption.id,
+        metadata: {
+          before: buildOptionAuditSnapshot(deletedOption),
+        },
+        ipAddress: auditContext.ipAddress,
+      },
+      tx,
+    );
+
+    return deletedOption;
   });
 }
