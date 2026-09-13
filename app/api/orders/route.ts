@@ -45,12 +45,14 @@ export async function GET(request: Request) {
       ),
     });
   } catch (error) {
-    return (
-      authErrorResponse(error) ??
-      NextResponse.json(
-        { error: "Não foi possível listar os pedidos." },
-        { status: 500 },
-      )
+    const authResponse = authErrorResponse(error);
+    if (authResponse) return authResponse;
+
+    const errorId = crypto.randomUUID();
+    console.error("Erro ao listar pedidos", { errorId, error });
+    return NextResponse.json(
+      { error: "Não foi possível listar os pedidos.", errorId },
+      { status: 500 },
     );
   }
 }
@@ -109,12 +111,14 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ data: order }, { status: 201 });
   } catch (error) {
-    return (
-      authErrorResponse(error) ??
-      NextResponse.json(
-        { error: "Não foi possível criar o pedido." },
-        { status: 500 },
-      )
+    const authResponse = authErrorResponse(error);
+    if (authResponse) return authResponse;
+
+    const errorId = crypto.randomUUID();
+    console.error("Erro ao criar pedido", { errorId, error });
+    return NextResponse.json(
+      { error: "Não foi possível criar o pedido.", errorId },
+      { status: 500 },
     );
   }
 }

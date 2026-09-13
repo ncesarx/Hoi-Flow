@@ -41,12 +41,14 @@ export async function GET(
           { status: 404 },
         );
   } catch (error) {
-    return (
-      authErrorResponse(error) ??
-      NextResponse.json(
-        { error: "Não foi possível consultar o pedido." },
-        { status: 500 },
-      )
+    const authResponse = authErrorResponse(error);
+    if (authResponse) return authResponse;
+
+    const errorId = crypto.randomUUID();
+    console.error("Erro ao consultar pedido", { errorId, error });
+    return NextResponse.json(
+      { error: "Não foi possível consultar o pedido.", errorId },
+      { status: 500 },
     );
   }
 }
@@ -86,12 +88,14 @@ export async function PATCH(
           { status: 409 },
         );
   } catch (error) {
-    return (
-      authErrorResponse(error) ??
-      NextResponse.json(
-        { error: "Não foi possível atualizar o pedido." },
-        { status: 500 },
-      )
+    const authResponse = authErrorResponse(error);
+    if (authResponse) return authResponse;
+
+    const errorId = crypto.randomUUID();
+    console.error("Erro ao atualizar pedido", { errorId, error });
+    return NextResponse.json(
+      { error: "Não foi possível atualizar o pedido.", errorId },
+      { status: 500 },
     );
   }
 }

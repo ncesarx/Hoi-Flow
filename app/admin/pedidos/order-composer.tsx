@@ -76,7 +76,10 @@ export function OrderComposer({ products, onCreated }: { products: OrderProduct[
         }),
       });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || "Não foi possível criar o pedido.");
+      if (!response.ok) {
+        const reference = payload.errorId ? ` Referência: ${payload.errorId}` : "";
+        throw new Error(`${payload.error || "Não foi possível criar o pedido."}${reference}`);
+      }
       onCreated();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Não foi possível criar o pedido.");
