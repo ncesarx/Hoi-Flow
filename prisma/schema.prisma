@@ -74,6 +74,11 @@ enum NotificationDeliveryStatus {
   FAILED
 }
 
+enum WhatsAppMessageType {
+  TEXT
+  UNSUPPORTED
+}
+
 model Tenant {
   id        String       @id @default(cuid())
   name      String
@@ -87,15 +92,16 @@ model Tenant {
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
-  units              Unit[]
-  users              User[]
-  categories         Category[]
-  products           Product[]
-  optionGroups       OptionGroup[]
-  options            Option[]
-  auditLogs          AuditLog[]
-  orders             Order[]
-  orderNotifications OrderNotification[]
+  units                   Unit[]
+  users                   User[]
+  categories              Category[]
+  products                Product[]
+  optionGroups            OptionGroup[]
+  options                 Option[]
+  auditLogs               AuditLog[]
+  orders                  Order[]
+  orderNotifications      OrderNotification[]
+  whatsAppInboundMessages WhatsAppInboundMessage[]
 
   @@index([status])
 }
@@ -350,6 +356,26 @@ model OrderNotification {
   @@unique([orderId, event])
   @@index([tenantId, status, availableAt])
   @@index([tenantId, orderId])
+}
+
+model WhatsAppInboundMessage {
+  id                String              @id @default(cuid())
+  tenantId          String
+  externalMessageId String
+  phoneNumberId     String
+  sender            String
+  type              WhatsAppMessageType
+  text              String?
+  receivedAt        DateTime
+  payload           Json
+  processedAt       DateTime?
+  createdAt         DateTime            @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, externalMessageId])
+  @@index([tenantId, processedAt, receivedAt])
+  @@index([phoneNumberId])
 }
 
 model Session {
