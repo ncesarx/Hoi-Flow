@@ -69,6 +69,7 @@ enum OrderNotificationEvent {
 
 enum NotificationDeliveryStatus {
   PENDING
+  PROCESSING
   SENT
   FAILED
 }
@@ -326,20 +327,22 @@ model OrderItemOption {
 }
 
 model OrderNotification {
-  id          String                     @id @default(cuid())
-  tenantId    String
-  orderId     String
-  channel     NotificationChannel        @default(WHATSAPP)
-  event       OrderNotificationEvent
-  status      NotificationDeliveryStatus @default(PENDING)
-  recipient   String
-  payload     Json
-  attempts    Int                        @default(0)
-  availableAt DateTime                   @default(now())
-  sentAt      DateTime?
-  lastError   String?
-  createdAt   DateTime                   @default(now())
-  updatedAt   DateTime                   @updatedAt
+  id                String                     @id @default(cuid())
+  tenantId          String
+  orderId           String
+  channel           NotificationChannel        @default(WHATSAPP)
+  event             OrderNotificationEvent
+  status            NotificationDeliveryStatus @default(PENDING)
+  recipient         String
+  payload           Json
+  attempts          Int                        @default(0)
+  availableAt       DateTime                   @default(now())
+  sentAt            DateTime?
+  lockedAt          DateTime?
+  providerMessageId String?
+  lastError         String?
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   order  Order  @relation(fields: [orderId, tenantId], references: [id, tenantId], onDelete: Cascade)
