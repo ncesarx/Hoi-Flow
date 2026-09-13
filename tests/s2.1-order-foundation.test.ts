@@ -111,6 +111,7 @@ describe("S2.1 - fundação do motor de pedidos", () => {
       tenantAId,
       {
         customerName: "Cliente piloto",
+        customerPhone: "5512999998877",
         items: [
           {
             productId,
@@ -138,6 +139,17 @@ describe("S2.1 - fundação do motor de pedidos", () => {
     });
     assert.ok(log);
     assert.equal(log.actorUserId, actorId);
+
+    const notification = await prisma.orderNotification.findFirst({
+      where: {
+        tenantId: tenantAId,
+        orderId,
+        event: "ORDER_CONFIRMED",
+      },
+    });
+    assert.ok(notification);
+    assert.equal(notification.recipient, "5512999998877");
+    assert.equal(notification.status, "PENDING");
   });
 
   test("outro tenant não consulta nem altera o pedido", async () => {
@@ -177,6 +189,16 @@ describe("S2.1 - fundação do motor de pedidos", () => {
       },
     });
     assert.equal(logs, 1);
+
+    const notification = await prisma.orderNotification.findFirst({
+      where: {
+        tenantId: tenantAId,
+        orderId,
+        event: "ORDER_PREPARING",
+      },
+    });
+    assert.ok(notification);
+    assert.equal(notification.status, "PENDING");
   });
 
   test("rejeita seleção obrigatória ausente sem persistir pedido", async () => {

@@ -34,6 +34,7 @@ function money(value: number) {
 export function OrderComposer({ products, onCreated }: { products: OrderProduct[]; onCreated: () => void }) {
   const [items, setItems] = useState<CartItem[]>([]);
   const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
   const [notes, setNotes] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -71,6 +72,7 @@ export function OrderComposer({ products, onCreated }: { products: OrderProduct[
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           customerName,
+          customerPhone,
           notes,
           items: items.map((item) => ({ productId: item.product.id, quantity: item.quantity, optionIds: item.optionIds, notes: item.notes })),
         }),
@@ -106,6 +108,7 @@ export function OrderComposer({ products, onCreated }: { products: OrderProduct[
       <section className="hf-order-cart">
         <header><h2>Pedido</h2><strong>{money(total)}</strong></header>
         <label>Cliente<input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Nome do cliente (opcional)" /></label>
+        <label>WhatsApp<input value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} inputMode="tel" placeholder="Telefone com DDD (opcional)" /></label>
         {items.length === 0 && <div className="hf-cart-empty">Selecione os produtos no cardápio.</div>}
         {items.map((item) => (
           <article key={item.key} className="hf-cart-item">

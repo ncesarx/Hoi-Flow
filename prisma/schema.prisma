@@ -55,6 +55,24 @@ enum OrderChannel {
   MANUAL
 }
 
+enum NotificationChannel {
+  WHATSAPP
+}
+
+enum OrderNotificationEvent {
+  ORDER_CONFIRMED
+  ORDER_PREPARING
+  ORDER_READY
+  ORDER_COMPLETED
+  ORDER_CANCELLED
+}
+
+enum NotificationDeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
 model Tenant {
   id        String       @id @default(cuid())
   name      String
@@ -68,14 +86,15 @@ model Tenant {
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
-  units        Unit[]
-  users        User[]
-  categories   Category[]
-  products     Product[]
-  optionGroups OptionGroup[]
-  options      Option[]
-  auditLogs    AuditLog[]
-  orders       Order[]
+  units              Unit[]
+  users              User[]
+  categories         Category[]
+  products           Product[]
+  optionGroups       OptionGroup[]
+  options            Option[]
+  auditLogs          AuditLog[]
+  orders             Order[]
+  orderNotifications OrderNotification[]
 
   @@index([status])
 }
@@ -256,9 +275,10 @@ model Order {
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 
-  tenant Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  unit   Unit?       @relation(fields: [unitId, tenantId], references: [id, tenantId], onDelete: Restrict)
-  items  OrderItem[]
+  tenant        Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unit          Unit?               @relation(fields: [unitId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  items         OrderItem[]
+  notifications OrderNotification[]
 
   @@unique([tenantId, code])
   @@unique([id, tenantId])
@@ -303,6 +323,30 @@ model OrderItemOption {
 
   @@index([tenantId, orderItemId])
   @@index([optionId])
+}
+
+model OrderNotification {
+  id          String                     @id @default(cuid())
+  tenantId    String
+  orderId     String
+  channel     NotificationChannel        @default(WHATSAPP)
+  event       OrderNotificationEvent
+  status      NotificationDeliveryStatus @default(PENDING)
+  recipient   String
+  payload     Json
+  attempts    Int                        @default(0)
+  availableAt DateTime                   @default(now())
+  sentAt      DateTime?
+  lastError   String?
+  createdAt   DateTime                   @default(now())
+  updatedAt   DateTime                   @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  order  Order  @relation(fields: [orderId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([orderId, event])
+  @@index([tenantId, status, availableAt])
+  @@index([tenantId, orderId])
 }
 
 model Session {

@@ -1,6 +1,12 @@
 import { randomUUID } from "node:crypto";
 
-import { OrderChannel, OrderStatus, ProductStatus } from "@prisma/client";
+import {
+  NotificationChannel,
+  OrderChannel,
+  OrderNotificationEvent,
+  OrderStatus,
+  ProductStatus,
+} from "@prisma/client";
 
 import { AuditActions, AuditEntityTypes } from "@/lib/audit/actions";
 import { createAuditLog } from "@/lib/audit/audit";
@@ -9,6 +15,7 @@ import {
   calculateOrderItemSubtotal,
   canTransitionOrderStatus,
   orderStatusTimestamps,
+  orderStatusNotificationEvent,
   sumMoney,
 } from "@/lib/orders/domain";
 
@@ -271,6 +278,25 @@ export async function createOrderForTenant(
       },
     });
 
+    if (order.customerPhone) {
+      await tx.orderNotification.create({
+        data: {
+          tenantId,
+          orderId: order.id,
+          channel: NotificationChannel.WHATSAPP,
+          event: OrderNotificationEvent.ORDER_CONFIRMED,
+          recipient: order.customerPhone,
+          payload: {
+            orderId: order.id,
+            code: order.code,
+            customerName: order.customerName,
+            status: order.status,
+            total: order.total.toFixed(2),
+          },
+        },
+      });
+    }
+
     await createAuditLog(
       {
         tenantId,
@@ -331,6 +357,25 @@ export async function updateOrderStatusForTenant(
         },
       },
     });
+
+    const notificationEvent = orderStatusNotificationEvent(status);
+    if (order.customerPhone && notificationEvent) {
+      await tx.orderNotification.create({
+        data: {
+          tenantId,
+          orderId: order.id,
+          channel: NotificationChannel.WHATSAPP,
+          event: notificationEvent,
+          recipient: order.customerPhone,
+          payload: {
+            orderId: order.id,
+            code: order.code,
+            customerName: order.customerName,
+            status: updatedOrder.status,
+          },
+        },
+      });
+    }
 
     await createAuditLog(
       {

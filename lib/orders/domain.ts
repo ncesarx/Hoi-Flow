@@ -1,4 +1,4 @@
-import { OrderStatus } from "@prisma/client";
+import { OrderNotificationEvent, OrderStatus } from "@prisma/client";
 
 const statusTransitions: Record<
   OrderStatus,
@@ -35,6 +35,21 @@ export function nextKitchenOrderStatus(status: OrderStatus) {
       return OrderStatus.READY;
     case OrderStatus.READY:
       return OrderStatus.COMPLETED;
+    default:
+      return null;
+  }
+}
+
+export function orderStatusNotificationEvent(status: OrderStatus) {
+  switch (status) {
+    case OrderStatus.PREPARING:
+      return OrderNotificationEvent.ORDER_PREPARING;
+    case OrderStatus.READY:
+      return OrderNotificationEvent.ORDER_READY;
+    case OrderStatus.COMPLETED:
+      return OrderNotificationEvent.ORDER_COMPLETED;
+    case OrderStatus.CANCELLED:
+      return OrderNotificationEvent.ORDER_CANCELLED;
     default:
       return null;
   }

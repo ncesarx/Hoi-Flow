@@ -11,6 +11,7 @@ import {
 } from "@/lib/data/orders";
 import { assertSameOrigin } from "@/lib/security/same-origin";
 import { requireTenantPermission } from "@/lib/tenant/authorized-context";
+import { normalizeWhatsAppPhone } from "@/lib/notifications/phone";
 
 function optionalText(value: unknown) {
   return typeof value === "string" && value.trim()
@@ -71,6 +72,14 @@ export async function POST(request: Request) {
       );
     }
 
+    const customerPhone = normalizeWhatsAppPhone(body.customerPhone);
+    if (!customerPhone.valid) {
+      return NextResponse.json(
+        { error: "WhatsApp inválido. Informe o telefone com DDD." },
+        { status: 400 },
+      );
+    }
+
     const items = body.items.map((item: unknown) => {
       const value = item as Record<string, unknown>;
       return {
@@ -92,7 +101,7 @@ export async function POST(request: Request) {
         unitId: optionalText(body.unitId),
         channel: OrderChannel.MANUAL,
         customerName: optionalText(body.customerName),
-        customerPhone: optionalText(body.customerPhone),
+        customerPhone: customerPhone.value,
         notes: optionalText(body.notes),
         items,
       },
