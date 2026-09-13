@@ -226,7 +226,7 @@ export async function createOrderForTenant(
     }
 
     const total = sumMoney(preparedItems.map((item) => item.subtotal));
-    const order = await tx.order.create({
+    const createdOrder = await tx.order.create({
       data: {
         tenantId,
         unitId: input.unitId ?? null,
@@ -238,8 +238,30 @@ export async function createOrderForTenant(
         notes: input.notes ?? null,
         total,
         confirmedAt: new Date(),
-        items: { create: preparedItems },
       },
+    });
+
+    for (const preparedItem of preparedItems) {
+      const { options, ...itemData } = preparedItem;
+      const orderItem = await tx.orderItem.create({
+        data: {
+          ...itemData,
+          orderId: createdOrder.id,
+        },
+      });
+
+      if (options.create.length > 0) {
+        await tx.orderItemOption.createMany({
+          data: options.create.map((option) => ({
+            ...option,
+            orderItemId: orderItem.id,
+          })),
+        });
+      }
+    }
+
+    const order = await tx.order.findUniqueOrThrow({
+      where: { id: createdOrder.id },
       include: {
         unit: true,
         items: {
