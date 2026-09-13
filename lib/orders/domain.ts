@@ -27,6 +27,19 @@ export function canTransitionOrderStatus(
   return statusTransitions[current].includes(next);
 }
 
+export function nextKitchenOrderStatus(status: OrderStatus) {
+  switch (status) {
+    case OrderStatus.NEW:
+      return OrderStatus.PREPARING;
+    case OrderStatus.PREPARING:
+      return OrderStatus.READY;
+    case OrderStatus.READY:
+      return OrderStatus.COMPLETED;
+    default:
+      return null;
+  }
+}
+
 export function orderStatusTimestamps(
   status: OrderStatus,
   now: Date,

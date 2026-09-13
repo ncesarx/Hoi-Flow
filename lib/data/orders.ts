@@ -1,10 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import {
-  OrderChannel,
-  OrderStatus,
-  ProductStatus,
-} from "@prisma/client";
+import { OrderChannel, OrderStatus, ProductStatus } from "@prisma/client";
 
 import { AuditActions, AuditEntityTypes } from "@/lib/audit/actions";
 import { createAuditLog } from "@/lib/audit/audit";
@@ -62,10 +58,27 @@ export async function listOrdersForTenant(
   });
 }
 
-export async function getOrderForTenant(
-  tenantId: string,
-  orderId: string,
-) {
+export async function listKitchenOrdersForTenant(tenantId: string) {
+  return prisma.order.findMany({
+    where: {
+      tenantId,
+      status: {
+        in: [OrderStatus.NEW, OrderStatus.PREPARING, OrderStatus.READY],
+      },
+    },
+    include: {
+      unit: true,
+      items: {
+        include: { options: true },
+        orderBy: { createdAt: "asc" },
+      },
+    },
+    orderBy: { createdAt: "asc" },
+    take: 200,
+  });
+}
+
+export async function getOrderForTenant(tenantId: string, orderId: string) {
   return prisma.order.findFirst({
     where: { id: orderId, tenantId },
     include: {
@@ -132,15 +145,12 @@ export async function createOrderForTenant(
       });
       if (!product || !product.basePrice) return null;
 
-      const requestedOptionIds = [
-        ...new Set(requestedItem.optionIds ?? []),
-      ];
-      const allowedOptions = product.optionGroups.flatMap(
-        ({ optionGroup }) =>
-          optionGroup.options.map((option) => ({
-            ...option,
-            optionGroupId: optionGroup.id,
-          })),
+      const requestedOptionIds = [...new Set(requestedItem.optionIds ?? [])];
+      const allowedOptions = product.optionGroups.flatMap(({ optionGroup }) =>
+        optionGroup.options.map((option) => ({
+          ...option,
+          optionGroupId: optionGroup.id,
+        })),
       );
       const selectedOptions = requestedOptionIds.map((optionId) =>
         allowedOptions.find((option) => option.id === optionId),
@@ -188,9 +198,7 @@ export async function createOrderForTenant(
       });
     }
 
-    const total = sumMoney(
-      preparedItems.map((item) => item.subtotal),
-    );
+    const total = sumMoney(preparedItems.map((item) => item.subtotal));
     const order = await tx.order.create({
       data: {
         tenantId,
@@ -251,12 +259,21 @@ export async function updateOrderStatusForTenant(
       return null;
     }
 
-    const updatedOrder = await tx.order.update({
-      where: { id: order.id },
+    const update = await tx.order.updateMany({
+      where: {
+        id: order.id,
+        tenantId,
+        status: order.status,
+      },
       data: {
         status,
         ...orderStatusTimestamps(status, new Date()),
       },
+    });
+    if (update.count !== 1) return null;
+
+    const updatedOrder = await tx.order.findUniqueOrThrow({
+      where: { id: order.id },
       include: {
         unit: true,
         items: {
