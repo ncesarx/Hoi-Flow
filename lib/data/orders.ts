@@ -78,6 +78,33 @@ export async function listKitchenOrdersForTenant(tenantId: string) {
   });
 }
 
+export async function listOrderCatalogForTenant(tenantId: string) {
+  return prisma.product.findMany({
+    where: {
+      tenantId,
+      status: ProductStatus.ACTIVE,
+      basePrice: { not: null },
+    },
+    include: {
+      category: true,
+      optionGroups: {
+        include: {
+          optionGroup: {
+            include: {
+              options: {
+                where: { active: true },
+                orderBy: { name: "asc" },
+              },
+            },
+          },
+        },
+        orderBy: { position: "asc" },
+      },
+    },
+    orderBy: [{ category: { position: "asc" } }, { name: "asc" }],
+  });
+}
+
 export async function getOrderForTenant(tenantId: string, orderId: string) {
   return prisma.order.findFirst({
     where: { id: orderId, tenantId },

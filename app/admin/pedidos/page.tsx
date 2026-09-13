@@ -1,12 +1,18 @@
 import { hasPermission, Permissions } from "@/lib/auth/rbac";
-import { listKitchenOrdersForTenant } from "@/lib/data/orders";
+import {
+  listKitchenOrdersForTenant,
+  listOrderCatalogForTenant,
+} from "@/lib/data/orders";
 import { requireTenantPermission } from "@/lib/tenant/authorized-context";
 
-import { KitchenBoard } from "./kitchen-board";
+import { OrdersWorkspace } from "./orders-workspace";
 
 export default async function OrdersPage() {
   const context = await requireTenantPermission(Permissions.ORDER_READ);
-  const orders = await listKitchenOrdersForTenant(context.tenantId);
+  const [orders, products] = await Promise.all([
+    listKitchenOrdersForTenant(context.tenantId),
+    listOrderCatalogForTenant(context.tenantId),
+  ]);
   const canWrite = hasPermission(context.role, Permissions.ORDER_WRITE);
 
   return (
@@ -26,7 +32,7 @@ export default async function OrdersPage() {
         </span>
       </section>
 
-      <KitchenBoard
+      <OrdersWorkspace
         canWrite={canWrite}
         initialOrders={orders.map((order) => ({
           id: order.id,
@@ -45,6 +51,26 @@ export default async function OrdersPage() {
             options: item.options.map((option) => ({
               id: option.id,
               optionName: option.optionName,
+            })),
+          })),
+        }))}
+        products={products.map((product) => ({
+          id: product.id,
+          name: product.name,
+          description: product.description,
+          categoryName: product.category?.name ?? "Sem categoria",
+          basePrice: product.basePrice!.toFixed(2),
+          groups: product.optionGroups.map(({ optionGroup }) => ({
+            id: optionGroup.id,
+            name: optionGroup.name,
+            selectionType: optionGroup.selectionType,
+            required: optionGroup.required,
+            minSelections: optionGroup.minSelections,
+            maxSelections: optionGroup.maxSelections,
+            options: optionGroup.options.map((option) => ({
+              id: option.id,
+              name: option.name,
+              priceDelta: option.priceDelta.toFixed(2),
             })),
           })),
         }))}

@@ -3,7 +3,7 @@
 import { OrderStatus } from "@prisma/client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-type KitchenOrder = {
+export type KitchenOrder = {
   id: string;
   code: string;
   status: OrderStatus;
@@ -84,6 +84,7 @@ export function KitchenBoard({ canWrite, initialOrders }: KitchenBoardProps) {
   }, []);
 
   useEffect(() => {
+    void refresh();
     const refreshTimer = window.setInterval(refresh, 10000);
     const clockTimer = window.setInterval(() => setNow(Date.now()), 30000);
     return () => {
