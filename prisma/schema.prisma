@@ -79,6 +79,23 @@ enum WhatsAppMessageType {
   UNSUPPORTED
 }
 
+enum WhatsAppConversationStatus {
+  ACTIVE
+  COMPLETED
+  HANDED_OFF
+  EXPIRED
+}
+
+enum WhatsAppIntent {
+  START
+  MENU
+  ORDER
+  STATUS
+  HELP
+  CANCEL
+  UNKNOWN
+}
+
 model Tenant {
   id        String       @id @default(cuid())
   name      String
@@ -102,6 +119,7 @@ model Tenant {
   orders                  Order[]
   orderNotifications      OrderNotification[]
   whatsAppInboundMessages WhatsAppInboundMessage[]
+  whatsAppConversations   WhatsAppConversation[]
 
   @@index([status])
 }
@@ -369,13 +387,35 @@ model WhatsAppInboundMessage {
   receivedAt        DateTime
   payload           Json
   processedAt       DateTime?
+  processingAt      DateTime?
+  conversationId    String?
   createdAt         DateTime            @default(now())
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant       Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversation WhatsAppConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
 
   @@unique([tenantId, externalMessageId])
   @@index([tenantId, processedAt, receivedAt])
   @@index([phoneNumberId])
+}
+
+model WhatsAppConversation {
+  id            String                     @id @default(cuid())
+  tenantId      String
+  phoneNumberId String
+  customerPhone String
+  status        WhatsAppConversationStatus @default(ACTIVE)
+  lastIntent    WhatsAppIntent?
+  draft         Json
+  lastMessageAt DateTime
+  createdAt     DateTime                   @default(now())
+  updatedAt     DateTime                   @updatedAt
+
+  tenant   Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  messages WhatsAppInboundMessage[]
+
+  @@unique([tenantId, customerPhone])
+  @@index([tenantId, status, lastMessageAt])
 }
 
 model Session {
