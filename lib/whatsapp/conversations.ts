@@ -1,10 +1,19 @@
-import { ProductStatus, type Prisma, WhatsAppConversationStatus, WhatsAppIntent, WhatsAppMessageType } from "@prisma/client";
+import {
+  OrderChannel,
+  ProductStatus,
+  type Prisma,
+  WhatsAppConversationStatus,
+  WhatsAppIntent,
+  WhatsAppMessageType,
+} from "@prisma/client";
 
+import { createOrderForTenantInTransaction } from "@/lib/data/orders";
 import { prisma } from "@/lib/db/prisma";
 import { classifyWhatsAppIntent } from "./intents";
 import {
   advanceWhatsAppOrderDraft,
   createWhatsAppOrderDraft,
+  isWhatsAppDraftConfirmation,
   parseWhatsAppOrderDraft,
   type WhatsAppCatalogProduct,
 } from "./order-draft";
@@ -13,23 +22,37 @@ import { buildWhatsAppReply } from "./replies";
 export async function processNextWhatsAppMessage(tenantId: string) {
   return prisma.$transaction(async (tx) => {
     const message = await tx.whatsAppInboundMessage.findFirst({
-      where: { tenantId, type: WhatsAppMessageType.TEXT, processedAt: null, processingAt: null },
+      where: {
+        tenantId,
+        type: WhatsAppMessageType.TEXT,
+        processedAt: null,
+        processingAt: null,
+      },
       orderBy: { receivedAt: "asc" },
     });
     if (!message || !message.text) return null;
 
     const claimed = await tx.whatsAppInboundMessage.updateMany({
-      where: { id: message.id, tenantId, processedAt: null, processingAt: null },
+      where: {
+        id: message.id,
+        tenantId,
+        processedAt: null,
+        processingAt: null,
+      },
       data: { processingAt: new Date() },
     });
     if (claimed.count !== 1) return null;
 
     const intent = classifyWhatsAppIntent(message.text);
     const existingConversation = await tx.whatsAppConversation.findUnique({
-      where: { tenantId_customerPhone: { tenantId, customerPhone: message.sender } },
+      where: {
+        tenantId_customerPhone: { tenantId, customerPhone: message.sender },
+      },
       select: { id: true, status: true, draft: true },
     });
-    if (existingConversation?.status === WhatsAppConversationStatus.HANDED_OFF) {
+    if (
+      existingConversation?.status === WhatsAppConversationStatus.HANDED_OFF
+    ) {
       await tx.whatsAppConversation.update({
         where: { id: existingConversation.id },
         data: { lastIntent: intent, lastMessageAt: message.receivedAt },
@@ -54,10 +77,13 @@ export async function processNextWhatsAppMessage(tenantId: string) {
       where: { id: tenantId },
       select: { name: true },
     });
-    const currentDraft = parseWhatsAppOrderDraft(existingConversation?.draft ?? {});
-    const needsOrderCatalog = Boolean(currentDraft)
-      || intent === WhatsAppIntent.ORDER
-      || intent === WhatsAppIntent.MENU;
+    const currentDraft = parseWhatsAppOrderDraft(
+      existingConversation?.draft ?? {},
+    );
+    const needsOrderCatalog =
+      Boolean(currentDraft) ||
+      intent === WhatsAppIntent.ORDER ||
+      intent === WhatsAppIntent.MENU;
     const orderCatalog = needsOrderCatalog
       ? await tx.product.findMany({
           where: {
@@ -72,7 +98,10 @@ export async function processNextWhatsAppMessage(tenantId: string) {
               include: {
                 optionGroup: {
                   include: {
-                    options: { where: { active: true }, orderBy: { position: "asc" } },
+                    options: {
+                      where: { active: true },
+                      orderBy: { position: "asc" },
+                    },
                   },
                 },
               },
@@ -84,7 +113,13 @@ export async function processNextWhatsAppMessage(tenantId: string) {
         })
       : [];
     const catalog: WhatsAppCatalogProduct[] = orderCatalog
-      .filter((product): product is typeof product & { basePrice: NonNullable<typeof product.basePrice> } => product.basePrice !== null)
+      .filter(
+        (
+          product,
+        ): product is typeof product & {
+          basePrice: NonNullable<typeof product.basePrice>;
+        } => product.basePrice !== null,
+      )
       .map((product) => ({
         id: product.id,
         name: product.name,
@@ -103,31 +138,36 @@ export async function processNextWhatsAppMessage(tenantId: string) {
           })),
         })),
       }));
-    const latestOrder = intent === WhatsAppIntent.STATUS
-      ? await tx.order.findFirst({
-          where: { tenantId, customerPhone: message.sender },
-          select: { code: true, status: true },
-          orderBy: { createdAt: "desc" },
-        })
-      : null;
+    const latestOrder =
+      intent === WhatsAppIntent.STATUS
+        ? await tx.order.findFirst({
+            where: { tenantId, customerPhone: message.sender },
+            select: { code: true, status: true },
+            orderBy: { createdAt: "desc" },
+          })
+        : null;
     const conversation = await tx.whatsAppConversation.upsert({
-      where: { tenantId_customerPhone: { tenantId, customerPhone: message.sender } },
+      where: {
+        tenantId_customerPhone: { tenantId, customerPhone: message.sender },
+      },
       create: {
         tenantId,
         phoneNumberId: message.phoneNumberId,
         customerPhone: message.sender,
-        status: intent === WhatsAppIntent.HELP
-          ? WhatsAppConversationStatus.HANDED_OFF
-          : WhatsAppConversationStatus.ACTIVE,
+        status:
+          intent === WhatsAppIntent.HELP
+            ? WhatsAppConversationStatus.HANDED_OFF
+            : WhatsAppConversationStatus.ACTIVE,
         lastIntent: intent,
         draft: {},
         lastMessageAt: message.receivedAt,
       },
       update: {
         phoneNumberId: message.phoneNumberId,
-        status: intent === WhatsAppIntent.HELP
-          ? WhatsAppConversationStatus.HANDED_OFF
-          : WhatsAppConversationStatus.ACTIVE,
+        status:
+          intent === WhatsAppIntent.HELP
+            ? WhatsAppConversationStatus.HANDED_OFF
+            : WhatsAppConversationStatus.ACTIVE,
         lastIntent: intent,
         lastMessageAt: message.receivedAt,
       },
@@ -137,18 +177,56 @@ export async function processNextWhatsAppMessage(tenantId: string) {
     let reply: string | null = null;
     if (currentDraft && intent === WhatsAppIntent.CANCEL) {
       draft = null;
-      reply = "A montagem do pedido foi cancelada. Envie *cardápio* quando quiser começar novamente.";
+      reply =
+        "A montagem do pedido foi cancelada. Envie *cardápio* quando quiser começar novamente.";
     } else if (
-      currentDraft
-      && intent !== WhatsAppIntent.HELP
-      && intent !== WhatsAppIntent.STATUS
-      && intent !== WhatsAppIntent.START
-      && intent !== WhatsAppIntent.MENU
+      currentDraft?.stage === "CONFIRM" &&
+      currentDraft.item &&
+      isWhatsAppDraftConfirmation(message.text)
     ) {
-      const result = advanceWhatsAppOrderDraft(currentDraft, message.text, catalog);
+      const order = await createOrderForTenantInTransaction(
+        tx,
+        tenantId,
+        {
+          channel: OrderChannel.WHATSAPP,
+          customerPhone: message.sender,
+          items: [
+            {
+              productId: currentDraft.item.productId,
+              quantity: currentDraft.item.quantity,
+              optionIds: currentDraft.item.optionIds,
+            },
+          ],
+        },
+        {},
+        { enqueueConfirmationNotification: false },
+      );
+      if (order) {
+        draft = null;
+        reply = `Pedido *${order.code}* confirmado e enviado para a cozinha. Total: R$ ${order.total.toFixed(2).replace(".", ",")}.`;
+      } else {
+        draft = null;
+        reply =
+          "O cardápio mudou durante a montagem. Envie *cardápio* para começar novamente.";
+      }
+    } else if (
+      currentDraft &&
+      intent !== WhatsAppIntent.HELP &&
+      intent !== WhatsAppIntent.STATUS &&
+      intent !== WhatsAppIntent.START &&
+      intent !== WhatsAppIntent.MENU
+    ) {
+      const result = advanceWhatsAppOrderDraft(
+        currentDraft,
+        message.text,
+        catalog,
+      );
       draft = result.draft;
       reply = result.reply;
-    } else if (intent === WhatsAppIntent.ORDER || intent === WhatsAppIntent.MENU) {
+    } else if (
+      intent === WhatsAppIntent.ORDER ||
+      intent === WhatsAppIntent.MENU
+    ) {
       const result = createWhatsAppOrderDraft(catalog);
       draft = result.draft;
       reply = result.reply;
@@ -168,21 +246,27 @@ export async function processNextWhatsAppMessage(tenantId: string) {
         inReplyToId: message.id,
         phoneNumberId: message.phoneNumberId,
         recipient: message.sender,
-        text: reply ?? buildWhatsAppReply({
-          intent,
-          tenantName: tenant.name,
-          products: catalog.map((product) => ({
-            name: product.name,
-            price: product.basePrice,
-          })),
-          latestOrder,
-        }),
+        text:
+          reply ??
+          buildWhatsAppReply({
+            intent,
+            tenantName: tenant.name,
+            products: catalog.map((product) => ({
+              name: product.name,
+              price: product.basePrice,
+            })),
+            latestOrder,
+          }),
       },
     });
 
     await tx.whatsAppInboundMessage.update({
       where: { id: message.id },
-      data: { conversationId: conversation.id, processedAt: new Date(), processingAt: null },
+      data: {
+        conversationId: conversation.id,
+        processedAt: new Date(),
+        processingAt: null,
+      },
     });
     return { messageId: message.id, conversationId: conversation.id, intent };
   });
@@ -190,7 +274,11 @@ export async function processNextWhatsAppMessage(tenantId: string) {
 
 export async function releaseExpiredWhatsAppMessageClaims(tenantId: string) {
   return prisma.whatsAppInboundMessage.updateMany({
-    where: { tenantId, processedAt: null, processingAt: { lt: new Date(Date.now() - 5 * 60_000) } },
+    where: {
+      tenantId,
+      processedAt: null,
+      processingAt: { lt: new Date(Date.now() - 5 * 60_000) },
+    },
     data: { processingAt: null },
   });
 }

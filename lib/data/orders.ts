@@ -5,6 +5,7 @@ import {
   OrderChannel,
   OrderNotificationEvent,
   OrderStatus,
+  type Prisma,
   ProductStatus,
 } from "@prisma/client";
 
@@ -130,194 +131,207 @@ export async function createOrderForTenant(
   input: CreateOrderInput,
   auditContext: OrderAuditContext = {},
 ) {
+  return prisma.$transaction((tx) =>
+    createOrderForTenantInTransaction(tx, tenantId, input, auditContext),
+  );
+}
+
+export async function createOrderForTenantInTransaction(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  input: CreateOrderInput,
+  auditContext: OrderAuditContext = {},
+  options: { enqueueConfirmationNotification?: boolean } = {},
+) {
   if (input.items.length === 0) {
     return null;
   }
 
-  return prisma.$transaction(async (tx) => {
-    if (input.unitId) {
-      const unit = await tx.unit.findFirst({
-        where: {
-          id: input.unitId,
-          tenantId,
-          status: "ACTIVE",
-        },
-      });
-      if (!unit) return null;
+  if (input.unitId) {
+    const unit = await tx.unit.findFirst({
+      where: {
+        id: input.unitId,
+        tenantId,
+        status: "ACTIVE",
+      },
+    });
+    if (!unit) return null;
+  }
+
+  const preparedItems = [];
+
+  for (const requestedItem of input.items) {
+    if (
+      !Number.isInteger(requestedItem.quantity) ||
+      requestedItem.quantity < 1
+    ) {
+      return null;
     }
 
-    const preparedItems = [];
-
-    for (const requestedItem of input.items) {
-      if (
-        !Number.isInteger(requestedItem.quantity) ||
-        requestedItem.quantity < 1
-      ) {
-        return null;
-      }
-
-      const product = await tx.product.findFirst({
-        where: {
-          id: requestedItem.productId,
-          tenantId,
-          status: ProductStatus.ACTIVE,
-          basePrice: { not: null },
-        },
-        include: {
-          optionGroups: {
-            include: {
-              optionGroup: {
-                include: {
-                  options: {
-                    where: { active: true },
-                  },
+    const product = await tx.product.findFirst({
+      where: {
+        id: requestedItem.productId,
+        tenantId,
+        status: ProductStatus.ACTIVE,
+        basePrice: { not: null },
+      },
+      include: {
+        optionGroups: {
+          include: {
+            optionGroup: {
+              include: {
+                options: {
+                  where: { active: true },
                 },
               },
             },
           },
         },
-      });
-      if (!product || !product.basePrice) return null;
-
-      const requestedOptionIds = [...new Set(requestedItem.optionIds ?? [])];
-      const allowedOptions = product.optionGroups.flatMap(({ optionGroup }) =>
-        optionGroup.options.map((option) => ({
-          ...option,
-          optionGroupId: optionGroup.id,
-        })),
-      );
-      const selectedOptions = requestedOptionIds.map((optionId) =>
-        allowedOptions.find((option) => option.id === optionId),
-      );
-      if (selectedOptions.some((option) => !option)) return null;
-
-      for (const { optionGroup } of product.optionGroups) {
-        const selectionCount = selectedOptions.filter(
-          (option) => option?.optionGroupId === optionGroup.id,
-        ).length;
-        if (
-          selectionCount < optionGroup.minSelections ||
-          selectionCount > optionGroup.maxSelections ||
-          (optionGroup.required && selectionCount === 0)
-        ) {
-          return null;
-        }
-      }
-
-      const options = selectedOptions.filter(
-        (option): option is NonNullable<typeof option> => Boolean(option),
-      );
-      const pricing = calculateOrderItemSubtotal(
-        product.basePrice.toFixed(2),
-        options.map((option) => option.priceDelta.toFixed(2)),
-        requestedItem.quantity,
-      );
-
-      preparedItems.push({
-        tenantId,
-        productId: product.id,
-        productName: product.name,
-        quantity: requestedItem.quantity,
-        unitPrice: pricing.unitPrice,
-        subtotal: pricing.subtotal,
-        notes: requestedItem.notes ?? null,
-        options: {
-          create: options.map((option) => ({
-            tenantId,
-            optionId: option.id,
-            optionName: option.name,
-            priceDelta: option.priceDelta,
-          })),
-        },
-      });
-    }
-
-    const total = sumMoney(preparedItems.map((item) => item.subtotal));
-    const createdOrder = await tx.order.create({
-      data: {
-        tenantId,
-        unitId: input.unitId ?? null,
-        code: createOrderCode(),
-        channel: input.channel ?? OrderChannel.MANUAL,
-        status: OrderStatus.NEW,
-        customerName: input.customerName ?? null,
-        customerPhone: input.customerPhone ?? null,
-        notes: input.notes ?? null,
-        total,
-        confirmedAt: new Date(),
       },
     });
+    if (!product || !product.basePrice) return null;
 
-    for (const preparedItem of preparedItems) {
-      const { options, ...itemData } = preparedItem;
-      const orderItem = await tx.orderItem.create({
-        data: {
-          ...itemData,
-          orderId: createdOrder.id,
-        },
-      });
+    const requestedOptionIds = [...new Set(requestedItem.optionIds ?? [])];
+    const allowedOptions = product.optionGroups.flatMap(({ optionGroup }) =>
+      optionGroup.options.map((option) => ({
+        ...option,
+        optionGroupId: optionGroup.id,
+      })),
+    );
+    const selectedOptions = requestedOptionIds.map((optionId) =>
+      allowedOptions.find((option) => option.id === optionId),
+    );
+    if (selectedOptions.some((option) => !option)) return null;
 
-      if (options.create.length > 0) {
-        await tx.orderItemOption.createMany({
-          data: options.create.map((option) => ({
-            ...option,
-            orderItemId: orderItem.id,
-          })),
-        });
+    for (const { optionGroup } of product.optionGroups) {
+      const selectionCount = selectedOptions.filter(
+        (option) => option?.optionGroupId === optionGroup.id,
+      ).length;
+      if (
+        selectionCount < optionGroup.minSelections ||
+        selectionCount > optionGroup.maxSelections ||
+        (optionGroup.required && selectionCount === 0)
+      ) {
+        return null;
       }
     }
 
-    const order = await tx.order.findUniqueOrThrow({
-      where: { id: createdOrder.id },
-      include: {
-        unit: true,
-        items: {
-          include: { options: true },
-          orderBy: { createdAt: "asc" },
-        },
-      },
-    });
-
-    if (order.customerPhone) {
-      await tx.orderNotification.create({
-        data: {
-          tenantId,
-          orderId: order.id,
-          channel: NotificationChannel.WHATSAPP,
-          event: OrderNotificationEvent.ORDER_CONFIRMED,
-          recipient: order.customerPhone,
-          payload: {
-            orderId: order.id,
-            code: order.code,
-            customerName: order.customerName,
-            status: order.status,
-            total: order.total.toFixed(2),
-          },
-        },
-      });
-    }
-
-    await createAuditLog(
-      {
-        tenantId,
-        actorUserId: auditContext.actorUserId,
-        action: AuditActions.ORDER_CREATED,
-        entityType: AuditEntityTypes.ORDER,
-        entityId: order.id,
-        metadata: {
-          code: order.code,
-          channel: order.channel,
-          status: order.status,
-          total: order.total.toFixed(2),
-          itemCount: order.items.length,
-        },
-        ipAddress: auditContext.ipAddress,
-      },
-      tx,
+    const options = selectedOptions.filter(
+      (option): option is NonNullable<typeof option> => Boolean(option),
+    );
+    const pricing = calculateOrderItemSubtotal(
+      product.basePrice.toFixed(2),
+      options.map((option) => option.priceDelta.toFixed(2)),
+      requestedItem.quantity,
     );
 
-    return order;
+    preparedItems.push({
+      tenantId,
+      productId: product.id,
+      productName: product.name,
+      quantity: requestedItem.quantity,
+      unitPrice: pricing.unitPrice,
+      subtotal: pricing.subtotal,
+      notes: requestedItem.notes ?? null,
+      options: {
+        create: options.map((option) => ({
+          tenantId,
+          optionId: option.id,
+          optionName: option.name,
+          priceDelta: option.priceDelta,
+        })),
+      },
+    });
+  }
+
+  const total = sumMoney(preparedItems.map((item) => item.subtotal));
+  const createdOrder = await tx.order.create({
+    data: {
+      tenantId,
+      unitId: input.unitId ?? null,
+      code: createOrderCode(),
+      channel: input.channel ?? OrderChannel.MANUAL,
+      status: OrderStatus.NEW,
+      customerName: input.customerName ?? null,
+      customerPhone: input.customerPhone ?? null,
+      notes: input.notes ?? null,
+      total,
+      confirmedAt: new Date(),
+    },
   });
+
+  for (const preparedItem of preparedItems) {
+    const { options, ...itemData } = preparedItem;
+    const orderItem = await tx.orderItem.create({
+      data: {
+        ...itemData,
+        orderId: createdOrder.id,
+      },
+    });
+
+    if (options.create.length > 0) {
+      await tx.orderItemOption.createMany({
+        data: options.create.map((option) => ({
+          ...option,
+          orderItemId: orderItem.id,
+        })),
+      });
+    }
+  }
+
+  const order = await tx.order.findUniqueOrThrow({
+    where: { id: createdOrder.id },
+    include: {
+      unit: true,
+      items: {
+        include: { options: true },
+        orderBy: { createdAt: "asc" },
+      },
+    },
+  });
+
+  if (
+    order.customerPhone &&
+    options.enqueueConfirmationNotification !== false
+  ) {
+    await tx.orderNotification.create({
+      data: {
+        tenantId,
+        orderId: order.id,
+        channel: NotificationChannel.WHATSAPP,
+        event: OrderNotificationEvent.ORDER_CONFIRMED,
+        recipient: order.customerPhone,
+        payload: {
+          orderId: order.id,
+          code: order.code,
+          customerName: order.customerName,
+          status: order.status,
+          total: order.total.toFixed(2),
+        },
+      },
+    });
+  }
+
+  await createAuditLog(
+    {
+      tenantId,
+      actorUserId: auditContext.actorUserId,
+      action: AuditActions.ORDER_CREATED,
+      entityType: AuditEntityTypes.ORDER,
+      entityId: order.id,
+      metadata: {
+        code: order.code,
+        channel: order.channel,
+        status: order.status,
+        total: order.total.toFixed(2),
+        itemCount: order.items.length,
+      },
+      ipAddress: auditContext.ipAddress,
+    },
+    tx,
+  );
+
+  return order;
 }
 
 export async function updateOrderStatusForTenant(

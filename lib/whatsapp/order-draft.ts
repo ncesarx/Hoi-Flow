@@ -23,7 +23,7 @@ export type WhatsAppCatalogProduct = {
   optionGroups: WhatsAppCatalogGroup[];
 };
 
-type DraftItem = {
+export type DraftItem = {
   productId: string;
   productName: string;
   quantity: number;
@@ -45,15 +45,27 @@ export type DraftAdvanceResult = {
 };
 
 function normalize(value: string) {
-  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
 }
 
 function money(value: string) {
-  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(value));
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(Number(value));
 }
 
 function productList(products: WhatsAppCatalogProduct[]) {
-  return products.map((product, index) => `${index + 1}. ${product.name} — ${money(product.basePrice)}`).join("\n");
+  return products
+    .map(
+      (product, index) =>
+        `${index + 1}. ${product.name} — ${money(product.basePrice)}`,
+    )
+    .join("\n");
 }
 
 function optionPrompt(group: WhatsAppCatalogGroup) {
@@ -61,18 +73,27 @@ function optionPrompt(group: WhatsAppCatalogGroup) {
     const delta = Number(option.priceDelta);
     return `${index + 1}. ${option.name}${delta ? ` (+${money(option.priceDelta)})` : ""}`;
   });
-  const instruction = group.selectionType === "SINGLE"
-    ? "Responda com o número da opção."
-    : `Responda com os números separados por vírgula${group.required ? "" : " ou *nenhum*"}.`;
+  const instruction =
+    group.selectionType === "SINGLE"
+      ? "Responda com o número da opção."
+      : `Responda com os números separados por vírgula${group.required ? "" : " ou *nenhum*"}.`;
   return `*${group.name}*\n${options.join("\n")}\n${instruction}`;
 }
 
 function confirmation(item: DraftItem) {
-  const options = item.optionNames.length ? `\nOpções: ${item.optionNames.join(", ")}` : "";
-  return `Item montado:\n*${item.quantity}x ${item.productName}*${options}\n\nEnvie *ajuda* para concluir com a equipe ou *cancelar* para desistir.`;
+  const options = item.optionNames.length
+    ? `\nOpções: ${item.optionNames.join(", ")}`
+    : "";
+  return `Confira seu item:\n*${item.quantity}x ${item.productName}*${options}\n\nEnvie *confirmar* para concluir ou *cancelar* para desistir.`;
 }
 
-export function createWhatsAppOrderDraft(products: WhatsAppCatalogProduct[]): DraftAdvanceResult {
+export function isWhatsAppDraftConfirmation(text: string) {
+  return /^(confirmar|confirmo|sim|pode confirmar)$/.test(normalize(text));
+}
+
+export function createWhatsAppOrderDraft(
+  products: WhatsAppCatalogProduct[],
+): DraftAdvanceResult {
   return {
     draft: { version: 1, stage: "SELECT_PRODUCT" },
     reply: products.length
@@ -81,10 +102,17 @@ export function createWhatsAppOrderDraft(products: WhatsAppCatalogProduct[]): Dr
   };
 }
 
-export function parseWhatsAppOrderDraft(value: Prisma.JsonValue): WhatsAppOrderDraft | null {
+export function parseWhatsAppOrderDraft(
+  value: Prisma.JsonValue,
+): WhatsAppOrderDraft | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const draft = value as Record<string, unknown>;
-  if (draft.version !== 1 || !["SELECT_PRODUCT", "QUANTITY", "OPTION_GROUP", "CONFIRM"].includes(String(draft.stage))) {
+  if (
+    draft.version !== 1 ||
+    !["SELECT_PRODUCT", "QUANTITY", "OPTION_GROUP", "CONFIRM"].includes(
+      String(draft.stage),
+    )
+  ) {
     return null;
   }
   return draft as WhatsAppOrderDraft;
@@ -102,11 +130,19 @@ function selectedProduct(text: string, products: WhatsAppCatalogProduct[]) {
 
 function selectedOptionIndexes(text: string, group: WhatsAppCatalogGroup) {
   const value = normalize(text);
-  if (value === "nenhum" && !group.required && group.minSelections === 0) return [];
+  if (value === "nenhum" && !group.required && group.minSelections === 0)
+    return [];
   if (!/^\d+(?:\s*,\s*\d+)*$/.test(value)) return null;
-  const indexes = [...new Set(value.split(",").map((entry) => Number(entry.trim()) - 1))];
-  if (indexes.some((index) => index < 0 || index >= group.options.length)) return null;
-  if (indexes.length < group.minSelections || indexes.length > group.maxSelections) return null;
+  const indexes = [
+    ...new Set(value.split(",").map((entry) => Number(entry.trim()) - 1)),
+  ];
+  if (indexes.some((index) => index < 0 || index >= group.options.length))
+    return null;
+  if (
+    indexes.length < group.minSelections ||
+    indexes.length > group.maxSelections
+  )
+    return null;
   if (group.selectionType === "SINGLE" && indexes.length !== 1) return null;
   return indexes;
 }
@@ -119,7 +155,10 @@ export function advanceWhatsAppOrderDraft(
   if (draft.stage === "SELECT_PRODUCT") {
     const product = selectedProduct(text, products);
     if (!product) {
-      return { draft, reply: `Não encontrei esse produto. Escolha uma opção:\n${productList(products)}` };
+      return {
+        draft,
+        reply: `Não encontrei esse produto. Escolha uma opção:\n${productList(products)}`,
+      };
     }
     return {
       draft: { version: 1, stage: "QUANTITY", productId: product.id },
@@ -127,7 +166,9 @@ export function advanceWhatsAppOrderDraft(
     };
   }
 
-  const product = products.find((entry) => entry.id === (draft.item?.productId ?? draft.productId));
+  const product = products.find(
+    (entry) => entry.id === (draft.item?.productId ?? draft.productId),
+  );
   if (!product) return createWhatsAppOrderDraft(products);
 
   if (draft.stage === "QUANTITY") {
@@ -145,33 +186,62 @@ export function advanceWhatsAppOrderDraft(
     const firstGroup = product.optionGroups[0];
     return firstGroup
       ? {
-          draft: { version: 1, stage: "OPTION_GROUP", item, optionGroupIndex: 0 },
+          draft: {
+            version: 1,
+            stage: "OPTION_GROUP",
+            item,
+            optionGroupIndex: 0,
+          },
           reply: optionPrompt(firstGroup),
         }
-      : { draft: { version: 1, stage: "CONFIRM", item }, reply: confirmation(item) };
+      : {
+          draft: { version: 1, stage: "CONFIRM", item },
+          reply: confirmation(item),
+        };
   }
 
   if (draft.stage === "OPTION_GROUP" && draft.item) {
     const groupIndex = draft.optionGroupIndex ?? 0;
     const group = product.optionGroups[groupIndex];
-    if (!group) return { draft: { version: 1, stage: "CONFIRM", item: draft.item }, reply: confirmation(draft.item) };
+    if (!group)
+      return {
+        draft: { version: 1, stage: "CONFIRM", item: draft.item },
+        reply: confirmation(draft.item),
+      };
     const indexes = selectedOptionIndexes(text, group);
     if (indexes === null) {
-      return { draft, reply: `Seleção inválida. Escolha entre ${group.minSelections} e ${group.maxSelections} opção(ões).\n${optionPrompt(group)}` };
+      return {
+        draft,
+        reply: `Seleção inválida. Escolha entre ${group.minSelections} e ${group.maxSelections} opção(ões).\n${optionPrompt(group)}`,
+      };
     }
     const selected = indexes.map((index) => group.options[index]);
     const item = {
       ...draft.item,
-      optionIds: [...draft.item.optionIds, ...selected.map((option) => option.id)],
-      optionNames: [...draft.item.optionNames, ...selected.map((option) => option.name)],
+      optionIds: [
+        ...draft.item.optionIds,
+        ...selected.map((option) => option.id),
+      ],
+      optionNames: [
+        ...draft.item.optionNames,
+        ...selected.map((option) => option.name),
+      ],
     };
     const nextGroup = product.optionGroups[groupIndex + 1];
     return nextGroup
       ? {
-          draft: { version: 1, stage: "OPTION_GROUP", item, optionGroupIndex: groupIndex + 1 },
+          draft: {
+            version: 1,
+            stage: "OPTION_GROUP",
+            item,
+            optionGroupIndex: groupIndex + 1,
+          },
           reply: optionPrompt(nextGroup),
         }
-      : { draft: { version: 1, stage: "CONFIRM", item }, reply: confirmation(item) };
+      : {
+          draft: { version: 1, stage: "CONFIRM", item },
+          reply: confirmation(item),
+        };
   }
 
   return { draft, reply: confirmation(draft.item!) };
