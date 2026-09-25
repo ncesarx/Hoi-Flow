@@ -20,7 +20,8 @@
     "db:studio": "prisma studio",
     "notifications:process": "tsx scripts/process-order-notifications.ts",
     "whatsapp:process": "tsx scripts/process-whatsapp-messages.ts",
-    "whatsapp:dispatch": "tsx scripts/dispatch-whatsapp-replies.ts"
+    "whatsapp:dispatch": "tsx scripts/dispatch-whatsapp-replies.ts",
+    "whatsapp:worker": "tsx scripts/run-whatsapp-worker.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",
