@@ -109,17 +109,18 @@ model Tenant {
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
-  units                   Unit[]
-  users                   User[]
-  categories              Category[]
-  products                Product[]
-  optionGroups            OptionGroup[]
-  options                 Option[]
-  auditLogs               AuditLog[]
-  orders                  Order[]
-  orderNotifications      OrderNotification[]
-  whatsAppInboundMessages WhatsAppInboundMessage[]
-  whatsAppConversations   WhatsAppConversation[]
+  units                    Unit[]
+  users                    User[]
+  categories               Category[]
+  products                 Product[]
+  optionGroups             OptionGroup[]
+  options                  Option[]
+  auditLogs                AuditLog[]
+  orders                   Order[]
+  orderNotifications       OrderNotification[]
+  whatsAppInboundMessages  WhatsAppInboundMessage[]
+  whatsAppConversations    WhatsAppConversation[]
+  whatsAppOutboundMessages WhatsAppOutboundMessage[]
 
   @@index([status])
 }
@@ -391,10 +392,12 @@ model WhatsAppInboundMessage {
   conversationId    String?
   createdAt         DateTime            @default(now())
 
-  tenant       Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  conversation WhatsAppConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  tenant       Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversation WhatsAppConversation?    @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  response     WhatsAppOutboundMessage? @relation("WhatsAppMessageResponse")
 
   @@unique([tenantId, externalMessageId])
+  @@unique([id, tenantId])
   @@index([tenantId, processedAt, receivedAt])
   @@index([phoneNumberId])
 }
@@ -411,11 +414,40 @@ model WhatsAppConversation {
   createdAt     DateTime                   @default(now())
   updatedAt     DateTime                   @updatedAt
 
-  tenant   Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant   Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   messages WhatsAppInboundMessage[]
+  replies  WhatsAppOutboundMessage[]
 
   @@unique([tenantId, customerPhone])
+  @@unique([id, tenantId])
   @@index([tenantId, status, lastMessageAt])
+}
+
+model WhatsAppOutboundMessage {
+  id                String                     @id @default(cuid())
+  tenantId          String
+  conversationId    String
+  inReplyToId       String
+  phoneNumberId     String
+  recipient         String
+  text              String
+  status            NotificationDeliveryStatus @default(PENDING)
+  attempts          Int                        @default(0)
+  availableAt       DateTime                   @default(now())
+  sentAt            DateTime?
+  lockedAt          DateTime?
+  providerMessageId String?
+  lastError         String?
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+
+  tenant       Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversation WhatsAppConversation   @relation(fields: [conversationId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  inReplyTo    WhatsAppInboundMessage @relation("WhatsAppMessageResponse", fields: [inReplyToId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([inReplyToId, tenantId])
+  @@index([tenantId, status, availableAt])
+  @@index([tenantId, conversationId])
 }
 
 model Session {
