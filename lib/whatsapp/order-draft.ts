@@ -32,9 +32,10 @@ export type DraftItem = {
 };
 
 export type WhatsAppOrderDraft = {
-  version: 1;
-  stage: "SELECT_PRODUCT" | "QUANTITY" | "OPTION_GROUP" | "CONFIRM";
+  version: 1 | 2;
+  stage: "SELECT_PRODUCT" | "QUANTITY" | "OPTION_GROUP" | "CONFIRM" | "CART";
   item?: DraftItem;
+  items?: DraftItem[];
   productId?: string;
   optionGroupIndex?: number;
 };
@@ -80,22 +81,36 @@ function optionPrompt(group: WhatsAppCatalogGroup) {
   return `*${group.name}*\n${options.join("\n")}\n${instruction}`;
 }
 
-function confirmation(item: DraftItem) {
-  const options = item.optionNames.length
-    ? `\nOpções: ${item.optionNames.join(", ")}`
-    : "";
-  return `Confira seu item:\n*${item.quantity}x ${item.productName}*${options}\n\nEnvie *confirmar* para concluir ou *cancelar* para desistir.`;
+function cartSummary(items: DraftItem[]) {
+  const lines = items.map((item, index) => {
+    const options = item.optionNames.length
+      ? `\n   ${item.optionNames.join(", ")}`
+      : "";
+    return `${index + 1}. *${item.quantity}x ${item.productName}*${options}`;
+  });
+  return `*Seu carrinho*\n${lines.join("\n")}\n\nEnvie *adicionar* para incluir outro item, *confirmar* para concluir ou *cancelar* para desistir.`;
 }
 
 export function isWhatsAppDraftConfirmation(text: string) {
   return /^(confirmar|confirmo|sim|pode confirmar)$/.test(normalize(text));
 }
 
+export function isWhatsAppDraftAddItem(text: string) {
+  return /^(adicionar|adicionar item|mais|outro|outro item)$/.test(
+    normalize(text),
+  );
+}
+
+export function getWhatsAppDraftItems(draft: WhatsAppOrderDraft) {
+  return draft.items ?? (draft.item ? [draft.item] : []);
+}
+
 export function createWhatsAppOrderDraft(
   products: WhatsAppCatalogProduct[],
+  items: DraftItem[] = [],
 ): DraftAdvanceResult {
   return {
-    draft: { version: 1, stage: "SELECT_PRODUCT" },
+    draft: { version: 2, stage: "SELECT_PRODUCT", items },
     reply: products.length
       ? `Qual item você deseja?\n${productList(products)}\n\nResponda com o número ou nome do produto.`
       : "O cardápio está indisponível no momento. Envie *ajuda* para falar com a equipe.",
@@ -108,8 +123,8 @@ export function parseWhatsAppOrderDraft(
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const draft = value as Record<string, unknown>;
   if (
-    draft.version !== 1 ||
-    !["SELECT_PRODUCT", "QUANTITY", "OPTION_GROUP", "CONFIRM"].includes(
+    ![1, 2].includes(Number(draft.version)) ||
+    !["SELECT_PRODUCT", "QUANTITY", "OPTION_GROUP", "CONFIRM", "CART"].includes(
       String(draft.stage),
     )
   ) {
@@ -152,6 +167,23 @@ export function advanceWhatsAppOrderDraft(
   text: string,
   products: WhatsAppCatalogProduct[],
 ): DraftAdvanceResult {
+  const items = getWhatsAppDraftItems(draft);
+  if (draft.stage === "CART") {
+    if (isWhatsAppDraftAddItem(text) && items.length >= 20) {
+      return {
+        draft,
+        reply:
+          "O carrinho atingiu o limite de 20 itens. Envie *confirmar* para concluir ou *cancelar* para desistir.",
+      };
+    }
+    return isWhatsAppDraftAddItem(text)
+      ? {
+          draft: { version: 2, stage: "SELECT_PRODUCT", items },
+          reply: `Escolha o próximo item:\n${productList(products)}`,
+        }
+      : { draft, reply: cartSummary(items) };
+  }
+
   if (draft.stage === "SELECT_PRODUCT") {
     const product = selectedProduct(text, products);
     if (!product) {
@@ -161,7 +193,12 @@ export function advanceWhatsAppOrderDraft(
       };
     }
     return {
-      draft: { version: 1, stage: "QUANTITY", productId: product.id },
+      draft: {
+        version: 2,
+        stage: "QUANTITY",
+        productId: product.id,
+        items,
+      },
       reply: `Quantas unidades de *${product.name}* você deseja? Responda com um número de 1 a 20.`,
     };
   }
@@ -187,16 +224,17 @@ export function advanceWhatsAppOrderDraft(
     return firstGroup
       ? {
           draft: {
-            version: 1,
+            version: 2,
             stage: "OPTION_GROUP",
             item,
+            items,
             optionGroupIndex: 0,
           },
           reply: optionPrompt(firstGroup),
         }
       : {
-          draft: { version: 1, stage: "CONFIRM", item },
-          reply: confirmation(item),
+          draft: { version: 2, stage: "CART", items: [...items, item] },
+          reply: cartSummary([...items, item]),
         };
   }
 
@@ -205,8 +243,12 @@ export function advanceWhatsAppOrderDraft(
     const group = product.optionGroups[groupIndex];
     if (!group)
       return {
-        draft: { version: 1, stage: "CONFIRM", item: draft.item },
-        reply: confirmation(draft.item),
+        draft: {
+          version: 2,
+          stage: "CART",
+          items: [...items, draft.item],
+        },
+        reply: cartSummary([...items, draft.item]),
       };
     const indexes = selectedOptionIndexes(text, group);
     if (indexes === null) {
@@ -231,18 +273,19 @@ export function advanceWhatsAppOrderDraft(
     return nextGroup
       ? {
           draft: {
-            version: 1,
+            version: 2,
             stage: "OPTION_GROUP",
             item,
+            items,
             optionGroupIndex: groupIndex + 1,
           },
           reply: optionPrompt(nextGroup),
         }
       : {
-          draft: { version: 1, stage: "CONFIRM", item },
-          reply: confirmation(item),
+          draft: { version: 2, stage: "CART", items: [...items, item] },
+          reply: cartSummary([...items, item]),
         };
   }
 
-  return { draft, reply: confirmation(draft.item!) };
+  return { draft, reply: cartSummary(items) };
 }

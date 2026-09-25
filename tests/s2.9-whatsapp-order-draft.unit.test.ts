@@ -6,6 +6,8 @@ import { SelectionType } from "@prisma/client";
 import {
   advanceWhatsAppOrderDraft,
   createWhatsAppOrderDraft,
+  getWhatsAppDraftItems,
+  isWhatsAppDraftAddItem,
   isWhatsAppDraftConfirmation,
   parseWhatsAppOrderDraft,
   type WhatsAppCatalogProduct,
@@ -53,8 +55,8 @@ describe("S2.9 - rascunho de pedido no WhatsApp", () => {
     const mixture = advanceWhatsAppOrderDraft(quantity.draft, "2", catalog);
     const side = advanceWhatsAppOrderDraft(mixture.draft, "1, 2", catalog);
 
-    assert.equal(side.draft.stage, "CONFIRM");
-    assert.deepEqual(side.draft.item, {
+    assert.equal(side.draft.stage, "CART");
+    assert.deepEqual(getWhatsAppDraftItems(side.draft)[0], {
       productId: "product-a",
       productName: "Marmitex do Dia",
       quantity: 2,
@@ -96,7 +98,7 @@ describe("S2.9 - rascunho de pedido no WhatsApp", () => {
       catalog,
     );
 
-    assert.equal(completed.draft.stage, "CONFIRM");
+    assert.equal(completed.draft.stage, "CART");
     assert.equal(parseWhatsAppOrderDraft(completed.draft), completed.draft);
     assert.equal(parseWhatsAppOrderDraft({ invalid: true }), null);
   });
@@ -105,5 +107,61 @@ describe("S2.9 - rascunho de pedido no WhatsApp", () => {
     assert.equal(isWhatsAppDraftConfirmation("Confirmar"), true);
     assert.equal(isWhatsAppDraftConfirmation("sim"), true);
     assert.equal(isWhatsAppDraftConfirmation("talvez"), false);
+  });
+
+  test("preserva o primeiro item ao adicionar um segundo produto", () => {
+    const product = advanceWhatsAppOrderDraft(
+      createWhatsAppOrderDraft(catalog).draft,
+      "1",
+      catalog,
+    );
+    const quantity = advanceWhatsAppOrderDraft(product.draft, "1", catalog);
+    const mixture = advanceWhatsAppOrderDraft(quantity.draft, "1", catalog);
+    const cart = advanceWhatsAppOrderDraft(mixture.draft, "nenhum", catalog);
+    const adding = advanceWhatsAppOrderDraft(cart.draft, "adicionar", catalog);
+
+    assert.equal(adding.draft.stage, "SELECT_PRODUCT");
+    assert.equal(getWhatsAppDraftItems(adding.draft).length, 1);
+    assert.equal(isWhatsAppDraftAddItem("outro item"), true);
+
+    const secondProduct = advanceWhatsAppOrderDraft(adding.draft, "1", catalog);
+    const secondQuantity = advanceWhatsAppOrderDraft(
+      secondProduct.draft,
+      "2",
+      catalog,
+    );
+    const secondMixture = advanceWhatsAppOrderDraft(
+      secondQuantity.draft,
+      "2",
+      catalog,
+    );
+    const completed = advanceWhatsAppOrderDraft(
+      secondMixture.draft,
+      "nenhum",
+      catalog,
+    );
+
+    assert.equal(getWhatsAppDraftItems(completed.draft).length, 2);
+    assert.deepEqual(
+      getWhatsAppDraftItems(completed.draft).map((item) => item.quantity),
+      [1, 2],
+    );
+  });
+
+  test("mantém compatibilidade com rascunho versão 1", () => {
+    const legacy = parseWhatsAppOrderDraft({
+      version: 1,
+      stage: "CONFIRM",
+      item: {
+        productId: "product-a",
+        productName: "Marmitex do Dia",
+        quantity: 1,
+        optionIds: ["option-a"],
+        optionNames: ["Lombo"],
+      },
+    });
+
+    assert.ok(legacy);
+    assert.equal(getWhatsAppDraftItems(legacy).length, 1);
   });
 });

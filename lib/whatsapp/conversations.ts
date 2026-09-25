@@ -13,6 +13,7 @@ import { classifyWhatsAppIntent } from "./intents";
 import {
   advanceWhatsAppOrderDraft,
   createWhatsAppOrderDraft,
+  getWhatsAppDraftItems,
   isWhatsAppDraftConfirmation,
   parseWhatsAppOrderDraft,
   type WhatsAppCatalogProduct,
@@ -180,23 +181,22 @@ export async function processNextWhatsAppMessage(tenantId: string) {
       reply =
         "A montagem do pedido foi cancelada. Envie *cardápio* quando quiser começar novamente.";
     } else if (
-      currentDraft?.stage === "CONFIRM" &&
-      currentDraft.item &&
+      (currentDraft?.stage === "CONFIRM" || currentDraft?.stage === "CART") &&
+      getWhatsAppDraftItems(currentDraft).length > 0 &&
       isWhatsAppDraftConfirmation(message.text)
     ) {
+      const draftItems = getWhatsAppDraftItems(currentDraft);
       const order = await createOrderForTenantInTransaction(
         tx,
         tenantId,
         {
           channel: OrderChannel.WHATSAPP,
           customerPhone: message.sender,
-          items: [
-            {
-              productId: currentDraft.item.productId,
-              quantity: currentDraft.item.quantity,
-              optionIds: currentDraft.item.optionIds,
-            },
-          ],
+          items: draftItems.map((item) => ({
+            productId: item.productId,
+            quantity: item.quantity,
+            optionIds: item.optionIds,
+          })),
         },
         {},
         { enqueueConfirmationNotification: false },
@@ -227,7 +227,12 @@ export async function processNextWhatsAppMessage(tenantId: string) {
       intent === WhatsAppIntent.ORDER ||
       intent === WhatsAppIntent.MENU
     ) {
-      const result = createWhatsAppOrderDraft(catalog);
+      const result = createWhatsAppOrderDraft(
+        catalog,
+        intent === WhatsAppIntent.MENU && currentDraft
+          ? getWhatsAppDraftItems(currentDraft)
+          : [],
+      );
       draft = result.draft;
       reply = result.reply;
     }
