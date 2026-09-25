@@ -5,8 +5,10 @@ import {
 import type { NotificationSender } from "@/lib/notifications/provider";
 import {
   processNextWhatsAppMessage,
+  processNextUnsupportedWhatsAppMessage,
   releaseExpiredWhatsAppMessageClaims,
 } from "./conversations";
+import { expireInactiveWhatsAppConversations } from "./lifecycle";
 import {
   dispatchNextWhatsAppReply,
   releaseExpiredWhatsAppReplyClaims,
@@ -16,26 +18,35 @@ export type WhatsAppWorkerCycleResult = {
   inbound: number;
   replies: number;
   notifications: number;
+  expired: number;
 };
 
 export async function runWhatsAppWorkerCycle(input: {
   tenantId: string;
   phoneNumberId: string;
   batchSize: number;
+  conversationTtlMinutes: number;
   sender: NotificationSender;
 }): Promise<WhatsAppWorkerCycleResult> {
   await releaseExpiredWhatsAppMessageClaims(input.tenantId);
   await releaseExpiredWhatsAppReplyClaims(input.tenantId, input.phoneNumberId);
   await releaseExpiredNotificationClaims(input.tenantId);
+  const expired = await expireInactiveWhatsAppConversations(
+    input.tenantId,
+    input.conversationTtlMinutes,
+  );
 
   const result: WhatsAppWorkerCycleResult = {
     inbound: 0,
     replies: 0,
     notifications: 0,
+    expired: expired.count,
   };
 
   for (let index = 0; index < input.batchSize; index += 1) {
-    const inbound = await processNextWhatsAppMessage(input.tenantId);
+    const inbound =
+      (await processNextWhatsAppMessage(input.tenantId)) ??
+      (await processNextUnsupportedWhatsAppMessage(input.tenantId));
     if (!inbound) break;
     result.inbound += 1;
   }
@@ -63,5 +74,7 @@ export async function runWhatsAppWorkerCycle(input: {
 }
 
 export function whatsAppWorkerDidWork(result: WhatsAppWorkerCycleResult) {
-  return result.inbound + result.replies + result.notifications > 0;
+  return (
+    result.inbound + result.replies + result.notifications + result.expired > 0
+  );
 }

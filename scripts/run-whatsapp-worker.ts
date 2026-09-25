@@ -29,6 +29,7 @@ try {
     phoneNumberId: config.phoneNumberId,
     pollIntervalMs: config.pollIntervalMs,
     batchSize: config.batchSize,
+    conversationTtlMinutes: config.conversationTtlMinutes,
   });
 
   while (!stopping) {

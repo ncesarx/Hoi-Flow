@@ -287,3 +287,101 @@ export async function releaseExpiredWhatsAppMessageClaims(tenantId: string) {
     data: { processingAt: null },
   });
 }
+
+export async function processNextUnsupportedWhatsAppMessage(tenantId: string) {
+  return prisma.$transaction(async (tx) => {
+    const message = await tx.whatsAppInboundMessage.findFirst({
+      where: {
+        tenantId,
+        type: WhatsAppMessageType.UNSUPPORTED,
+        processedAt: null,
+        processingAt: null,
+      },
+      orderBy: { receivedAt: "asc" },
+    });
+    if (!message) return null;
+
+    const claimed = await tx.whatsAppInboundMessage.updateMany({
+      where: {
+        id: message.id,
+        tenantId,
+        processedAt: null,
+        processingAt: null,
+      },
+      data: { processingAt: new Date() },
+    });
+    if (claimed.count !== 1) return null;
+
+    const existingConversation = await tx.whatsAppConversation.findUnique({
+      where: {
+        tenantId_customerPhone: {
+          tenantId,
+          customerPhone: message.sender,
+        },
+      },
+      select: { id: true, status: true },
+    });
+
+    if (
+      existingConversation?.status === WhatsAppConversationStatus.HANDED_OFF
+    ) {
+      await tx.whatsAppConversation.update({
+        where: { id: existingConversation.id },
+        data: { lastMessageAt: message.receivedAt },
+      });
+      await tx.whatsAppInboundMessage.update({
+        where: { id: message.id },
+        data: {
+          conversationId: existingConversation.id,
+          processedAt: new Date(),
+          processingAt: null,
+        },
+      });
+      return { messageId: message.id, handedOff: true };
+    }
+
+    const conversation = await tx.whatsAppConversation.upsert({
+      where: {
+        tenantId_customerPhone: {
+          tenantId,
+          customerPhone: message.sender,
+        },
+      },
+      create: {
+        tenantId,
+        phoneNumberId: message.phoneNumberId,
+        customerPhone: message.sender,
+        status: WhatsAppConversationStatus.ACTIVE,
+        lastIntent: WhatsAppIntent.UNKNOWN,
+        draft: {},
+        lastMessageAt: message.receivedAt,
+      },
+      update: {
+        phoneNumberId: message.phoneNumberId,
+        status: WhatsAppConversationStatus.ACTIVE,
+        lastIntent: WhatsAppIntent.UNKNOWN,
+        lastMessageAt: message.receivedAt,
+      },
+    });
+
+    await tx.whatsAppOutboundMessage.create({
+      data: {
+        tenantId,
+        conversationId: conversation.id,
+        inReplyToId: message.id,
+        phoneNumberId: message.phoneNumberId,
+        recipient: message.sender,
+        text: "No momento consigo processar apenas mensagens de texto. Escreva *cardápio*, *pedido*, *status* ou *ajuda*.",
+      },
+    });
+    await tx.whatsAppInboundMessage.update({
+      where: { id: message.id },
+      data: {
+        conversationId: conversation.id,
+        processedAt: new Date(),
+        processingAt: null,
+      },
+    });
+    return { messageId: message.id, conversationId: conversation.id };
+  });
+}

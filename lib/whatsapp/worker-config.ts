@@ -5,6 +5,7 @@ export type WhatsAppWorkerConfig = {
   graphApiVersion: string;
   pollIntervalMs: number;
   batchSize: number;
+  conversationTtlMinutes: number;
 };
 
 type WorkerEnvironment = Record<string, string | undefined>;
@@ -53,6 +54,13 @@ export function readWhatsAppWorkerConfig(
       1,
       100,
       "WHATSAPP_WORKER_BATCH_SIZE",
+    ),
+    conversationTtlMinutes: integerInRange(
+      env.WHATSAPP_CONVERSATION_TTL_MINUTES,
+      30,
+      5,
+      1_440,
+      "WHATSAPP_CONVERSATION_TTL_MINUTES",
     ),
   };
 }
