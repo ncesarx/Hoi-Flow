@@ -14,15 +14,14 @@ export const Permissions = {
 
   ORDER_READ: "order.read",
   ORDER_WRITE: "order.write",
+
+  WHATSAPP_READ: "whatsapp.read",
+  WHATSAPP_WRITE: "whatsapp.write",
 } as const;
 
-export type Permission =
-  (typeof Permissions)[keyof typeof Permissions];
+export type Permission = (typeof Permissions)[keyof typeof Permissions];
 
-const ROLE_PERMISSIONS: Record<
-  RoleCode,
-  readonly Permission[]
-> = {
+const ROLE_PERMISSIONS: Record<RoleCode, readonly Permission[]> = {
   SUPER_ADMIN: [],
 
   OWNER: [
@@ -35,6 +34,8 @@ const ROLE_PERMISSIONS: Record<
     Permissions.TENANT_MANAGE,
     Permissions.ORDER_READ,
     Permissions.ORDER_WRITE,
+    Permissions.WHATSAPP_READ,
+    Permissions.WHATSAPP_WRITE,
   ],
 
   MANAGER: [
@@ -45,6 +46,8 @@ const ROLE_PERMISSIONS: Record<
     Permissions.USER_READ,
     Permissions.ORDER_READ,
     Permissions.ORDER_WRITE,
+    Permissions.WHATSAPP_READ,
+    Permissions.WHATSAPP_WRITE,
   ],
 
   ATTENDANT: [
@@ -52,6 +55,8 @@ const ROLE_PERMISSIONS: Record<
     Permissions.UNIT_READ,
     Permissions.ORDER_READ,
     Permissions.ORDER_WRITE,
+    Permissions.WHATSAPP_READ,
+    Permissions.WHATSAPP_WRITE,
   ],
 };
 
@@ -67,23 +72,14 @@ export type TenantAuthorizationResult =
     }
   | {
       allowed: false;
-      reason:
-        | "NO_TENANT"
-        | "INSUFFICIENT_PERMISSION";
+      reason: "NO_TENANT" | "INSUFFICIENT_PERMISSION";
     };
 
-export function hasPermission(
-  role: RoleCode,
-  permission: Permission,
-) {
-  return ROLE_PERMISSIONS[role].includes(
-    permission,
-  );
+export function hasPermission(role: RoleCode, permission: Permission) {
+  return ROLE_PERMISSIONS[role].includes(permission);
 }
 
-export function getPermissionsForRole(
-  role: RoleCode,
-): readonly Permission[] {
+export function getPermissionsForRole(role: RoleCode): readonly Permission[] {
   return ROLE_PERMISSIONS[role];
 }
 
@@ -91,26 +87,17 @@ export function authorizeTenantSubject(
   subject: TenantAuthorizationSubject,
   permission: Permission,
 ): TenantAuthorizationResult {
-  if (
-    !subject.tenantId ||
-    !subject.hasTenant
-  ) {
+  if (!subject.tenantId || !subject.hasTenant) {
     return {
       allowed: false,
       reason: "NO_TENANT",
     };
   }
 
-  if (
-    !hasPermission(
-      subject.role,
-      permission,
-    )
-  ) {
+  if (!hasPermission(subject.role, permission)) {
     return {
       allowed: false,
-      reason:
-        "INSUFFICIENT_PERMISSION",
+      reason: "INSUFFICIENT_PERMISSION",
     };
   }
 

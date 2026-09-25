@@ -427,7 +427,7 @@ model WhatsAppOutboundMessage {
   id                String                     @id @default(cuid())
   tenantId          String
   conversationId    String
-  inReplyToId       String
+  inReplyToId       String?
   phoneNumberId     String
   recipient         String
   text              String
@@ -441,9 +441,9 @@ model WhatsAppOutboundMessage {
   createdAt         DateTime                   @default(now())
   updatedAt         DateTime                   @updatedAt
 
-  tenant       Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  conversation WhatsAppConversation   @relation(fields: [conversationId, tenantId], references: [id, tenantId], onDelete: Cascade)
-  inReplyTo    WhatsAppInboundMessage @relation("WhatsAppMessageResponse", fields: [inReplyToId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  tenant       Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversation WhatsAppConversation    @relation(fields: [conversationId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  inReplyTo    WhatsAppInboundMessage? @relation("WhatsAppMessageResponse", fields: [inReplyToId, tenantId], references: [id, tenantId], onDelete: Cascade)
 
   @@unique([inReplyToId, tenantId])
   @@index([tenantId, status, availableAt])

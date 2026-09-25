@@ -17,6 +17,8 @@ const actionLabels: Record<string, string> = {
   PRODUCT_OPTION_GROUP_DETACHED: "Grupo removido do produto",
   ORDER_CREATED: "Pedido criado",
   ORDER_STATUS_CHANGED: "Status do pedido atualizado",
+  WHATSAPP_CONVERSATION_RESUMED: "Automação da conversa retomada",
+  WHATSAPP_MESSAGE_SENT: "Mensagem de atendimento enviada",
 };
 
 const entityLabels: Record<string, string> = {
@@ -28,57 +30,41 @@ const entityLabels: Record<string, string> = {
   Tenant: "Restaurante",
   User: "Usuário",
   Order: "Pedido",
+  WhatsAppConversation: "Conversa WhatsApp",
 };
 
 export default async function AuditPage() {
-  const { tenantId, tenant } =
-    await requireTenantPermission(
-      Permissions.TENANT_MANAGE,
-    );
+  const { tenantId, tenant } = await requireTenantPermission(
+    Permissions.TENANT_MANAGE,
+  );
 
-  const logs =
-    await listAuditLogsForTenant(
-      tenantId,
-      100,
-    );
+  const logs = await listAuditLogsForTenant(tenantId, 100);
 
-  const dateFormatter =
-    new Intl.DateTimeFormat(
-      "pt-BR",
-      {
-        dateStyle: "short",
-        timeStyle: "medium",
-        timeZone: tenant.timezone,
-      },
-    );
+  const dateFormatter = new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "short",
+    timeStyle: "medium",
+    timeZone: tenant.timezone,
+  });
 
   return (
     <div className="hf-page">
       <section className="hf-page-heading">
         <div>
-          <span className="hf-eyebrow">
-            Segurança e rastreabilidade
-          </span>
+          <span className="hf-eyebrow">Segurança e rastreabilidade</span>
 
           <h1>Auditoria</h1>
 
-          <p>
-            Últimos eventos administrativos de {tenant.name}.
-          </p>
+          <p>Últimos eventos administrativos de {tenant.name}.</p>
         </div>
 
-        <span className="hf-module-chip">
-          {logs.length} eventos
-        </span>
+        <span className="hf-module-chip">{logs.length} eventos</span>
       </section>
 
       <section className="hf-panel hf-audit-panel">
         {logs.length === 0 ? (
           <div className="hf-audit-empty">
             <strong>Nenhum evento registrado</strong>
-            <p>
-              As próximas alterações do catálogo aparecerão aqui.
-            </p>
+            <p>As próximas alterações do catálogo aparecerão aqui.</p>
           </div>
         ) : (
           <div className="hf-audit-table-wrap">
@@ -122,9 +108,7 @@ export default async function AuditPage() {
                       {log.metadata ? (
                         <details className="hf-audit-details">
                           <summary>Visualizar</summary>
-                          <pre>
-                            {JSON.stringify(log.metadata, null, 2)}
-                          </pre>
+                          <pre>{JSON.stringify(log.metadata, null, 2)}</pre>
                         </details>
                       ) : (
                         "—"

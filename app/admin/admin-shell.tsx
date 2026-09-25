@@ -56,6 +56,14 @@ const navigation: NavigationItem[] = [
   },
 
   {
+    label: "Atendimento",
+    href: "/admin/atendimento",
+    icon: "◉",
+    permission: "whatsapp.read",
+    tenantOnly: true,
+  },
+
+  {
     label: "Cardápio",
     href: "/admin/cardapio",
     icon: "≡",
@@ -114,43 +122,26 @@ export function AdminShell({
 }: AdminShellProps) {
   const pathname = usePathname();
 
-  const [
-    mobileOpen,
-    setMobileOpen,
-  ] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
-  function isAllowed(
-    item: NavigationItem,
-  ) {
-    if (
-      item.tenantOnly &&
-      !hasTenant
-    ) {
+  function isAllowed(item: NavigationItem) {
+    if (item.tenantOnly && !hasTenant) {
       return false;
     }
 
-    if (
-      item.permission &&
-      !permissions.includes(
-        item.permission,
-      )
-    ) {
+    if (item.permission && !permissions.includes(item.permission)) {
       return false;
     }
 
     return true;
   }
 
-  function isActive(
-    href: string,
-  ) {
+  function isActive(href: string) {
     if (href === "/admin") {
       return pathname === "/admin";
     }
 
-    return pathname.startsWith(
-      href,
-    );
+    return pathname.startsWith(href);
   }
 
   const initials =
@@ -158,168 +149,99 @@ export function AdminShell({
       .split(/\s+/)
       .filter(Boolean)
       .slice(0, 2)
-      .map((part) =>
-        part.charAt(0),
-      )
+      .map((part) => part.charAt(0))
       .join("")
       .toUpperCase() || "HF";
 
-  const roleLabel =
-    roleLabels[user.role] ??
-    user.role;
+  const roleLabel = roleLabels[user.role] ?? user.role;
 
   return (
     <div className="hf-admin">
       <button
         type="button"
         aria-label="Fechar menu"
-        className={`hf-overlay ${
-          mobileOpen
-            ? "is-visible"
-            : ""
-        }`}
-        onClick={() =>
-          setMobileOpen(false)
-        }
+        className={`hf-overlay ${mobileOpen ? "is-visible" : ""}`}
+        onClick={() => setMobileOpen(false)}
       />
 
-      <aside
-        className={`hf-sidebar ${
-          mobileOpen
-            ? "is-open"
-            : ""
-        }`}
-      >
+      <aside className={`hf-sidebar ${mobileOpen ? "is-open" : ""}`}>
         <div className="hf-platform-brand">
           <Link
             href="/admin"
             className="hf-platform-logo"
-            onClick={() =>
-              setMobileOpen(false)
-            }
+            onClick={() => setMobileOpen(false)}
           >
-            <span className="hf-platform-hoi">
-              HOI-
-            </span>
+            <span className="hf-platform-hoi">HOI-</span>
 
-            <span className="hf-platform-flow">
-              FLOW
-            </span>
+            <span className="hf-platform-flow">FLOW</span>
           </Link>
 
-          <span className="hf-platform-product">
-            {platform.product}
-          </span>
+          <span className="hf-platform-product">{platform.product}</span>
         </div>
 
         {hasTenant && (
           <div className="hf-tenant-card">
             <div className="hf-tenant-logo">
               {tenant.logo ? (
-                <img
-                  src={tenant.logo}
-                  alt={tenant.name}
-                />
+                <img src={tenant.logo} alt={tenant.name} />
               ) : (
-                <span>
-                  {tenant.name
-                    .charAt(0)
-                    .toUpperCase()}
-                </span>
+                <span>{tenant.name.charAt(0).toUpperCase()}</span>
               )}
             </div>
 
             <div className="hf-tenant-data">
-              <span>
-                Restaurante atual
-              </span>
+              <span>Restaurante atual</span>
 
-              <strong>
-                {tenant.name}
-              </strong>
+              <strong>{tenant.name}</strong>
             </div>
           </div>
         )}
 
-        <nav
-          className="hf-navigation"
-          aria-label="Navegação principal"
-        >
-          {navigation
-            .filter(isAllowed)
-            .map((item) => (
+        <nav className="hf-navigation" aria-label="Navegação principal">
+          {navigation.filter(isAllowed).map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`hf-nav-link ${
+                isActive(item.href) ? "is-active" : ""
+              }`}
+              onClick={() => setMobileOpen(false)}
+            >
+              <span className="hf-nav-icon" aria-hidden="true">
+                {item.icon}
+              </span>
+
+              <span>{item.label}</span>
+            </Link>
+          ))}
+        </nav>
+
+        <div className="hf-sidebar-bottom">
+          <nav className="hf-navigation hf-navigation-secondary">
+            {secondaryNavigation.filter(isAllowed).map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
                 className={`hf-nav-link ${
-                  isActive(item.href)
-                    ? "is-active"
-                    : ""
+                  isActive(item.href) ? "is-active" : ""
                 }`}
-                onClick={() =>
-                  setMobileOpen(false)
-                }
+                onClick={() => setMobileOpen(false)}
               >
-                <span
-                  className="hf-nav-icon"
-                  aria-hidden="true"
-                >
+                <span className="hf-nav-icon" aria-hidden="true">
                   {item.icon}
                 </span>
 
-                <span>
-                  {item.label}
-                </span>
+                <span>{item.label}</span>
               </Link>
             ))}
-        </nav>
-
-        <div className="hf-sidebar-bottom">
-          <nav
-            className="hf-navigation hf-navigation-secondary"
-          >
-            {secondaryNavigation
-              .filter(isAllowed)
-              .map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`hf-nav-link ${
-                    isActive(item.href)
-                      ? "is-active"
-                      : ""
-                  }`}
-                  onClick={() =>
-                    setMobileOpen(false)
-                  }
-                >
-                  <span
-                    className="hf-nav-icon"
-                    aria-hidden="true"
-                  >
-                    {item.icon}
-                  </span>
-
-                  <span>
-                    {item.label}
-                  </span>
-                </Link>
-              ))}
           </nav>
 
           <div className="hf-sidebar-signature">
-            <span>
-              Plataforma
-            </span>
+            <span>Plataforma</span>
 
-            <strong>
-              {platform.name}
-            </strong>
+            <strong>{platform.name}</strong>
 
-            <small>
-              Home & Office
-              Tech Solutions
-            </small>
+            <small>Home & Office Tech Solutions</small>
           </div>
         </div>
       </aside>
@@ -331,9 +253,7 @@ export function AdminShell({
               type="button"
               className="hf-mobile-menu"
               aria-label="Abrir menu"
-              onClick={() =>
-                setMobileOpen(true)
-              }
+              onClick={() => setMobileOpen(true)}
             >
               <span />
               <span />
@@ -341,15 +261,9 @@ export function AdminShell({
             </button>
 
             <div className="hf-context">
-              <span>
-                Operação
-              </span>
+              <span>Operação</span>
 
-              <strong>
-                {hasTenant
-                  ? tenant.name
-                  : platform.name}
-              </strong>
+              <strong>{hasTenant ? tenant.name : platform.name}</strong>
             </div>
           </div>
 
@@ -360,18 +274,12 @@ export function AdminShell({
             </div>
 
             <div className="hf-user">
-              <div className="hf-avatar">
-                {initials}
-              </div>
+              <div className="hf-avatar">{initials}</div>
 
               <div className="hf-user-info">
-                <strong>
-                  {user.name}
-                </strong>
+                <strong>{user.name}</strong>
 
-                <span>
-                  {roleLabel}
-                </span>
+                <span>{roleLabel}</span>
               </div>
             </div>
 
@@ -379,9 +287,7 @@ export function AdminShell({
           </div>
         </header>
 
-        <main className="hf-main">
-          {children}
-        </main>
+        <main className="hf-main">{children}</main>
       </div>
     </div>
   );
